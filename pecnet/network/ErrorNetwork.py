@@ -94,7 +94,7 @@ class ErrorNetwork():
             model = self.models[self.__model_index]  # Get the model from the list
             self.__model_index += 1                  # Increment the model index   
 
-        err_preds=model.predict(x)+error_denormalizer
+        err_preds=model.predict(x)#+error_denormalizer
      
         err_comp_preds=compensated_preds-err_preds
         err_error=err_preds-y

@@ -1,4 +1,44 @@
-import numpy as np 
+import numpy as np
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
+class Normalizer:
+    def __init__(self, normalization_type='standard'):
+
+        if normalization_type == 'standard':
+            self.scaler = StandardScaler()
+        elif normalization_type == 'minmax':
+            self.scaler = MinMaxScaler()
+        else:
+            raise ValueError("Normalization type must be chosen!")
+
+    def fit(self, data):
+        self.scaler.fit(data)
+
+    def transform(self, data):
+        return self.scaler.transform(data)
+
+    def fit_transform(self, data):
+        return self.scaler.fit_transform(data)
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+    
+class MeanNormalizer():
+
+    def __init__(self):
+        self.mean = None
+
+    def fit(self, data):
+        self.mean = np.mean(data)
+
+    def transform(self, data):
+        if self.mean is None:
+            raise ValueError("Fit Before Transforming")
+        return data - self.mean
+
+    def fit_transform(self, data):
+        self.mean = np.mean(data)
+        return data - self.mean
 
 class WindowNormalizer():
 
@@ -52,33 +92,20 @@ class WindowNormalizer():
 
         return normalized_data,normalization_values
 
-class Normalizer():
-
-    def __init__(self):
-        self.mean = None
-
-    def fit(self, data):
-        self.mean = np.mean(data)
-
-    def transform(self, data):
-        if self.mean is None:
-            raise ValueError("Fit Before Transforming")
-        return data - self.mean
-
-    def fit_transform(self, data):
-        self.mean = np.mean(data)
-        return data - self.mean
-
 class Scaler():
     
         def __init__(self):
             self.scale_coeff=None
-            self.range_coeff=1.5
-    
-        def scale1D(self, data):
+        
+        def fit_scale1D(self, data,scale_factor):
             self.min = np.min(data)
             self.max = np.max(data)
-            self.scale_coeff = (self.max - self.min)*self.range_coeff
+            self.scale_coeff = (self.max - self.min)*scale_factor
+            return data/self.scale_coeff
+    
+        def scale1D(self, data):
+            if self.scale_coeff is None:
+                raise ValueError("Fit Before Transforming")
             return data/self.scale_coeff
         
         def unscale1D(self, data):
@@ -91,15 +118,15 @@ class Scaler():
         
 if __name__=="__main__":
 
-    data=np.array([[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12]])
-    print(data.shape)
+    # data=np.array([[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12]])
+    # print(data.shape)
     wn = WindowNormalizer()
-    wn.fit(data)
-    print(wn.transform(data))
-    print(data.shape)
+    # wn.fit(data)
+    # print(wn.transform(data))
+    # print(data.shape)
     
-    scaler = Scaler()
-    print(scaler.scale1D(np.array([1,2,3,4,5,6,7,8,9,10])))
+    # scaler = Scaler()
+    # print(scaler.scale1D(np.array([1,2,3,4,5,6,7,8,9,10])))
 
-    nd,np= wn.normalize_with_prewindow([1,2,3,4,5], 4,1)
+    nd,np= wn.normalize_with_prewindow([1,2,3,4,5,6,7,8,9,10], 4,1)
     print(nd)

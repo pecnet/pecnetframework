@@ -48,8 +48,8 @@ class BasicNN(nn.Module):
 
         self.init_hyperparameters(sample_size,input_sequence_size,output_sequence_size)
         self.init_model()
-        self.init_devices()    
-    
+        self.init_devices()  
+
     def init_hyperparameters(self,sample_size,input_sequence_size,output_sequence_size):
 
         self.input_sequence_size = input_sequence_size
@@ -79,7 +79,7 @@ class BasicNN(nn.Module):
             layer=nn.Linear(self.hidden_layer_units_sizes[i-1], self.hidden_layer_units_sizes[i])
             initializers.kaiming_normal_(layer.weight)
             layers.append(layer)
-        
+
         # Add the output layer
         layers.append(nn.Linear(self.hidden_layer_units_sizes[-1], self.output_sequence_size))
         initializers.kaiming_normal_(layers[-1].weight)
@@ -96,7 +96,8 @@ class BasicNN(nn.Module):
         
         self.to(self.device)
         
-     
+
+        
     def forward(self, x):
 
         for layer in self.layers[:-1]:

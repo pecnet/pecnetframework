@@ -35,7 +35,7 @@ class Utility:
         Plots the given datasets with respect to the given timestamps and plot parameters.
         """
 
-        # Trimming the datasets to the same length w.r.t. predictions
+        # Trimming the datasets to the same length w.rt. predictions
         min_length = min(len(dataset) for dataset in datasets)
         timestamps = timestamps[-min_length:]
         datasets = [dataset[-min_length:] for dataset in datasets]
@@ -77,7 +77,7 @@ class Utility:
             plt.show()
 
     @staticmethod
-    def set_hyperparameters(heuristic=False,learning_rate=0.001,epoch_size=300,batch_size=32,hidden_units_sizes=[32,16]):
+    def set_hyperparameters(heuristic=False,learning_rate=0.001,epoch_size=1000,batch_size=32,hidden_units_sizes=[32,16]):
         """
         Sets hyperparameters for pecnet framework.
         if you just set heuristic=True, that means:  
@@ -95,6 +95,75 @@ class Utility:
         Utility.epoch_size=epoch_size
         Utility.batch_size=batch_size
         Utility.hidden_units_sizes=hidden_units_sizes
+    
+    @staticmethod
+    def make_pct(data):
+        
+        if not isinstance(data, pd.Series):
+            data = pd.Series(data)
+
+        pct_change = data.pct_change().fillna(0)
+        pct_change.iloc[0] = 0
+
+        return pct_change.to_numpy()
+    
+    @staticmethod
+    def convert_pct_back(data,initial_value):
+        
+        converted_data = [initial_value]
+        for pct in data[1:]:
+            new_data = converted_data[-1] * (1 + pct)
+            converted_data.append(new_data)
+        
+        return np.array(converted_data)
+
+    @staticmethod
+    def convert_pct_preds_back(preds,reals): #reals should be 1 step back in time at same index
+        
+        converted_preds = []
+        for i in range (0,len(preds)):
+            new_value = reals[i] * (1 + preds[i])
+            converted_preds.append(new_value)
+        
+        return np.array(converted_preds)
+
+    @staticmethod
+    def create_difference_series(time_series):
+
+        if not isinstance(time_series, np.ndarray):
+            time_series = np.array(time_series)
+        
+        difference_series = [0]
+        
+        for i in range(1, len(time_series)):
+            difference = time_series[i] - time_series[i - 1]
+            difference_series.append(difference)
+        
+        return np.array(difference_series)
+
+    @staticmethod
+    def convert_diffs_to_origin(difference_series, initial_value):
+        # Initialize the original series with the first element as 0
+        original_series = [initial_value]
+        
+        # Calculate the cumulative sum to obtain the original series
+        for i in range(1, len(difference_series)):
+            original_value = original_series[i - 1] + difference_series[i]
+            original_series.append(original_value)
+        
+        return np.array(original_series)
+
+    @staticmethod
+    def convert_diffs_preds_to_origin(preds,reals): #reals should be 1 step back in time at same index
+
+        original_series = []
+        
+        # Calculate the cumulative sum to obtain the original series
+        for i in range(0, len(preds)):
+            original_value = preds[i] + reals[i]
+            original_series.append(original_value)
+    
+        return np.array(original_series)
 
 # Test code
 if __name__ == '__main__':

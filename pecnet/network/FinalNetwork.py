@@ -12,7 +12,7 @@ from pecnet.preprocessing import DataPreprocessor
 
 class FinalNetwork():
     """
-        A network designed to integrate and finalize prediction pipeline coming from a cascaded sequence of models.
+        A network designed to integrate and finalize predictions from a cascaded sequence of models.
 
         This class represents a Final Network, which is used in the last stage of a predictive modeling pipeline.
         Its main function is to take all cascaded predictions and generate a final, unified prediction. The class
@@ -80,17 +80,28 @@ class FinalNetwork():
     
         return preds
 
-    def get_final_predictions(self):
+    def final_predictions(self):
         return self.__final_predictions
 
     def __generate_final_preds(self,preds):
         """
         Denormalizes and unscales the predictions.
         """
-        denormalized_preds=preds+DataPreprocessor().get_final_denormalization_term()
-        unscaled_preds=DataPreprocessor().scaler.unscale1D(denormalized_preds)
-        
-        return unscaled_preds 
+        denormalization_term= DataPreprocessor().get_final_denormalization_term()
+       
+        if self.mode=='test':
+            denormalization_term[-1]=DataPreprocessor().generate_final_normalization_term_for_last_pred_element(preds[-1])
+            
+        denormalized_preds=preds+denormalization_term
 
+        if(DataPreprocessor().normalizer):
+            denormalized_preds=DataPreprocessor().normalizer.inverse_transform(denormalized_preds)
+        
+        if(DataPreprocessor().scaler.scale_coeff is not None):
+            unscaled_preds=DataPreprocessor().scaler.unscale1D(denormalized_preds)
+            return unscaled_preds
+        else:
+            return denormalized_preds
+         
     def switch_mode(self,mode):
         self.mode=mode             

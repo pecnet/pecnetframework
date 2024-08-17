@@ -25,14 +25,6 @@ class Pecnet:
             List[float] : Last compensated predictions in pipeline.
         """
         return self.variable_network.get_last_compensated_predictions()
-
-    def get_last_variable_errors(self):
-        """
-        Just a Wrapper method, feeds errors of  previous variable network's last errors to the next network.
-        Returns: 
-            List[float] : Variable network's last network's errors
-        """
-        return self.variable_network.get_Last_target_errors()
     
     def get_all_preds(self):
         """
@@ -73,7 +65,7 @@ class Pecnet:
         self.final_network.init_network(self.get_all_preds())
 
 
-        return self.final_network.get_final_predictions()
+        return self.final_network.final_predictions()
 
     # Evaluate the model    
     def evaluate(self, pred, y):
@@ -87,7 +79,8 @@ class Pecnet:
             The function adjusts the length of the actual values array to match the length of the
             predictions array due to the pre-required timestamps size for prediction process and time shifting of the error sequences.        
         """
-
+        pred=pred[:-1] # last value is the tomorrow's value, it's not used in the evaluation
+        
         #Adjust real prices index to match with predictions
         if len(y)>len(pred):
             y=y[-len(pred):]

@@ -37,7 +37,7 @@ class VariableNetwork():
         get_compensated_errors: Returns the compensated errors for the error network.
         get_last_compensated_predictions: Returns the last set of compensated predictions.
         get_predictions: Returns all predictions from the cascaded networks inside Variable Network.
-        get_Last_target_errors: Returns the last set of target values (errors) for next network.
+        get_Last_target_values: Returns the last set of target values (errors) for next network.
         switch_mode: Switches between 'train' and 'test' modes.
     """    
 
@@ -66,11 +66,15 @@ class VariableNetwork():
         for frequency in range(frequencies):
             for statistic in range(statistics):
                 
-                print("Cascaded Neural Network for frequency {} and statistic {} is working...".format(frequency,statistic))
+                cascad_data_x=X_bands[:,frequency,statistic,:]
                 
-                cascad_data_x=X_bands[:,frequency,statistic,:]                                                                                                                                                                      
-                preds,errors,compensated_preds=self.__add_cascaded_network(cascad_data_x,self.__target_values[-1])
+                if np.all(cascad_data_x == 0): # all values will be 0 for frequency=1 and statistic="std"
+                    continue; 
 
+                print("Cascaded Neural Network for frequency {} and statistic {} is working...".format(frequency,statistic))                                                                                                                                                                     
+
+                preds,errors,compensated_preds=self.__add_cascaded_network(cascad_data_x,self.__target_values[-1])
+                
                 self.__predictions.append(preds)
                 self.__target_values.append(errors)
                 self.__compensated_predictions.append(compensated_preds)
@@ -104,6 +108,7 @@ class VariableNetwork():
             self.models.append(model)  # Store the trained model
         
         elif self.mode=='test':
+
             model = self.models[self.__model_index]  # Get the model from the list
             self.__model_index += 1                  # Increment the model index   
         
@@ -127,6 +132,7 @@ class VariableNetwork():
         """
         Returns the compensated errors for the error network. ----> compensated_train-y_train
         """
+
         return self.__compensated_predictions[-1]-self.__target_values[0]     
 
     def get_last_compensated_predictions(self):
@@ -141,7 +147,7 @@ class VariableNetwork():
         """
         return self.__predictions                                             
 
-    def get_Last_target_errors(self):
+    def get_Last_target_values(self):
         """
         Returns last error target values (errors of errors) for next variable network with escaping error network.
         """
