@@ -1,3 +1,20 @@
+<h1 align="center">PREDICTIVE ERROR COMPENSATED WAVELET NEURAL NETWORKS (PECNET)</h1>
+
+**PECNET** is an innovative artificial neural network arhitecture that addresses the issue of overfitting by training the data separately in cascaded networks based on different frequency bands and types, utilizing the remaining errors of each network instead of utilizing outputs as the target label. In the PECNET architecture, data is fed into the networks with a low-frequency band in a wide time window, and the subsequent network is trained with narrower time windows and high-frequency data while utilizing the error from the previous low-frequency network. This approach enhances the orthogonality of data characteristics across time windows and improves prediction performance as additional networks are added, reducing the likelihood of overfitting. Additionally, by applying wavelet transform to the various frequency components of each network, it is possible to distinguish and extract the variety of patterns present in the data with the analysis at different levels of time and frequency resolution. These procedures can be followed in Figure 1.
+
+
+
+![Figure 1](https://github.com/user-attachments/assets/373d9352-fb7d-4641-b709-efb461cbef9e)
+<p align="center"><em>Figure 1: PECNET Architecture</em></p>
+
+## Core Concepts
+
+### 🔴 Cascaded NNs with Residual Errors
+### 🔵 Using Different Frequency Bands Hierarchically 
+### 🟢 Wavelet Transformation as a Feature Selection Mechanism
+### 🟡 Adaptive Normalization for Nonstationary Cases
+### 🟤 Data Fusion in an Orthonogal Manner
+
 <h1 align="center">SIMPLE USAGE SCENARIO</h1>
 The following diagram outlines the solution steps to be followed from start to finish for a time series forecasting task, along with the corresponding code equivalents in the framework. Assuming that the framework installation is successfully completed and the data is correctly transferred to the software environment, this basic code flow demonstrates how to implement the PECNET model for many time series forecasting tasks.
 <br>
