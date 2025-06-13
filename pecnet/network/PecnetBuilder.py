@@ -20,6 +20,25 @@ class PecnetBuilder:
     def __init__(self):
         self.pecnet = Pecnet()
 
+    def add_variable_network(self, X_train, y_train=None):
+        """
+        Adds a variable network to the Pecnet model. Supports multiple variable networks.
+
+        The variable network is a customizable part of the model that can be trained on specific
+        training data and its different frequency bands. The initial variable network should be provided with both X_train and y_train.
+        Subsequent variable networks only require X_train.
+
+        Args:
+            X_train: Training input data.
+            y_train: Training target data.
+        """
+
+        if y_train is None:
+            y_train = self.pecnet.get_next_variable_network_target_values()
+
+        self.pecnet.add_variable_network(VariableNetwork(X_train,y_train))
+        return self
+
     def add_final_network(self):
         """
         Adds a final network to the Pecnet model.
@@ -39,19 +58,6 @@ class PecnetBuilder:
                                                  self.pecnet.get_last_compensated_predictions())
         return self
 
-    def add_variable_network(self, X_train, y_train):
-        """
-        Adds a variable network to the Pecnet model.
-
-        The variable network is a customizable part of the model that can be trained on specific
-        training data and its different frequency bands.
-
-        Args:
-            X_train: Training input data.
-            y_train: Training target data.
-        """
-        self.pecnet.variable_network = VariableNetwork(X_train,y_train)
-        return self
 
     def build(self):
         """

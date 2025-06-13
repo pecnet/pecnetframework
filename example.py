@@ -6,10 +6,11 @@ from pecnet.network import PecnetBuilder
 
 if __name__=='__main__':
 
-    #loads example dataset and plots it, close the plot and go on
+
+    #loads default example dataset and plots it, close the plot and go on
 
     aapl_timestamps,aapl_prices=Utility.load_apple_test_dataset()
-    
+
     Utility.plot(
         aapl_timestamps,
         aapl_prices,
@@ -19,7 +20,7 @@ if __name__=='__main__':
         tick_size=5,
         save_location=None)
 
-    #preprocesses data and splits it into train and test sets    
+    #preprocesses data and splits it into train and test sets
     X_train, X_test, y_train, y_test=DataPreprocessor().preprocess(data=aapl_prices[-1460:], # last 4 years
                                                                 sampling_periods=[1,2,3],
                                                                 sampling_statistics=["mean","std"],
@@ -33,12 +34,12 @@ if __name__=='__main__':
     #sets hyperparameters for pecnet framework
 
     #Utility.set_hyperparameters(heuristic=True)
-    #heuristic=True  means that 
-    # 1-)learning_rate=0.01 
-    # 2-)epoch_size=300     
+    #heuristic=True  means that
+    # 1-)learning_rate=0.01
+    # 2-)epoch_size=300
     # 3-)batch_size is square root of sample size
     # 4-)The number of hidden neurons in first layer is 2/3 the size of the input layer, plus the size of the output layer.
-    # 5-)The number of hidden neurons in second layer is : 
+    # 5-)The number of hidden neurons in second layer is :
     # (sample_size/8*(input_sequence_size+output_sequence_size))-first_layer size and 8 is a scale factor, which can be changed.
     # There are 2 hidden layers in total. Because, there is currently no theoretical reason to use neural networks with any more than two hidden layers
     # or you can set hyperparameters manually by using Utility.set_hyperparameters() like below.
@@ -49,13 +50,13 @@ if __name__=='__main__':
                                 hidden_units_sizes=[16,8])
 
     #acts like fit() method
-        
+
     pecnet = (PecnetBuilder().add_variable_network(X_train,y_train)
                                 .add_error_network()
                                 .add_final_network()
                                 .build())
 
-                            
+
     #predictions for test set
 
     preds= pecnet.predict(X_test, y_test)
@@ -66,7 +67,7 @@ if __name__=='__main__':
     #Evaluates results in terms of RMSE,MAPE,R2.
 
     result=pecnet.evaluate(preds, aapl_prices)
-    print(result) 
+    print(result)
 
 
     #plot predictions to compare with ground truths
@@ -80,6 +81,6 @@ if __name__=='__main__':
         ylabel='Price ($)',
         tick_size=5,
         labels=["Actual","Predicted"],
-        save_location=None)                       
-                        
-   
+        save_location=None)
+
+

@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
 
 class Utility:
 
@@ -37,7 +38,7 @@ class Utility:
 
         # Trimming the datasets to the same length w.rt. predictions
         min_length = min(len(dataset) for dataset in datasets)
-        timestamps = timestamps[-min_length:]
+        timestamps = pd.to_datetime(timestamps[-min_length:])
         datasets = [dataset[-min_length:] for dataset in datasets]
 
         font = {'family': 'serif',
@@ -57,18 +58,19 @@ class Utility:
         # Plotting the datasets
         for i, dataset in enumerate(datasets, start=1):
             
-            if labels==None:
-                label=f"Dataset {i}"
-            else:
-                label=labels[i-1]
-            
+            label = f"Dataset {i}" if labels is None else labels[i - 1]
             plt.plot(timestamps, dataset, markersize=2,linewidth=2.2,label=label)
 
         # Setting the xticks.if timesatamps are smaller than tick_size,all timestamps are plotted
-        indices = np.linspace(0, len(timestamps) - 1, min(tick_size, len(timestamps)), dtype=int)
-        plt.xticks(ticks=indices, labels=[timestamps[i] for i in indices])
+        ax = plt.gca()
+        ax.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
+
+        if tick_size > 0:
+            step = max(1, len(timestamps) // tick_size)
+            plt.xticks(ticks=timestamps[::step])
 
         plt.legend(loc='upper left', fontsize=16,shadow=True)
+        plt.tight_layout()
 
         if save_location:
             plt.savefig(save_location,dpi=600,bbox_inches='tight')
@@ -80,15 +82,14 @@ class Utility:
     def set_hyperparameters(heuristic=False,learning_rate=0.001,epoch_size=1000,batch_size=32,hidden_units_sizes=[32,16]):
         """
         Sets hyperparameters for pecnet framework.
-        if you just set heuristic=True, that means:  
+        if you just set heuristic=True, that means:
         1-)learning_rate=0.01 
         2-)epoch_size=300     
         3-)batch_size is square root of sample size
         4-)The number of hidden neurons in first layer is 2/3 the size of the input layer, plus the size of the output layer.
-        5-)The number of hidden neurons in second layer is :\ 
+        5-)The number of hidden neurons in second layer is :
         (sample_size/8*(input_sequence_size+output_sequence_size))-first_layer size and 8 is a scale factor, which can be changed.
         There are 2 hidden layers in total. Because, there is currently no theoretical reason to use neural networks with any more than two hidden layers
-        
         """
         Utility.heuristic=heuristic
         Utility.learning_rate=learning_rate
@@ -165,16 +166,53 @@ class Utility:
     
         return np.array(original_series)
 
+    @staticmethod
+    def dataframe_to_dict(dataframe, time_column='Date'):
+        """
+        Converts a multivariate pandas DataFrame into a dictionary with column names as keys and their values as NumPy arrays.
+        Separates the time or date column into its own array.
+
+        Parameters:
+        dataframe (pd.DataFrame): The multivariate data to be converted.
+        time_column (str): The name of the time or date column.
+
+        Returns:
+        dict: A dictionary with keys as column names and values as NumPy arrays.
+        np.ndarray: A NumPy array containing time or date values.
+        """
+        if time_column in dataframe.columns:
+            time_values = dataframe.pop(time_column).to_numpy()
+        elif dataframe.index.name == time_column:
+            time_values = dataframe.index.to_numpy()
+        else:
+            raise ValueError(f"Time column '{time_column}' not found in the dataframe or as an index.")
+
+        data_dict = {col: dataframe[col].to_numpy() for col in dataframe.columns}
+
+        return time_values, data_dict
+
 # Test code
 if __name__ == '__main__':
 
-    print(Utility.get_utility_path())
-    
-    timestamps, values = Utility.load_apple_test_dataset()
-    print("Timestamps:", timestamps)
-    print("Values:", values)
+    # print(Utility.get_utility_path())
+    #
+    # timestamps, values = Utility.load_apple_test_dataset()
+    # print("Timestamps:", timestamps)
+    # print("Values:", values)
+    #
+    # # Call the static plot method
+    # Utility.plot(timestamps, values, title='Apple Stock Prices', xlabel='Date', ylabel='Price ($)',save_location='C:\\Users\\srknm\\Desktop\\plot.jpg')
 
-    # Call the static plot method
-    Utility.plot(timestamps, values, title='Apple Stock Prices', xlabel='Date', ylabel='Price ($)',save_location='C:\\Users\\srknm\\Desktop\\plot.jpg')
+    # Example of converting a DataFrame to a dictionary
+    data = {
+        'Date': pd.date_range(start='2020-01-01', periods=5, freq='D'),
+        'Open': [300, 305, 310, 308, 307],
+        'Close': [305, 310, 308, 307, 312],
+        'Volume': [1000, 1100, 1050, 1075, 1200]
+    }
+    df = pd.DataFrame(data)
 
+    time_values, data_dict = Utility.dataframe_to_dict(df, time_column='Date')
+    print("Time Values:", time_values)
+    print("Data Dictionary:", data_dict)
 

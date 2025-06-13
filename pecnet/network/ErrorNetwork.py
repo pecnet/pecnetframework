@@ -1,16 +1,9 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
-import numpy as np
-import matplotlib.pyplot as plt
-
 from pecnet.models import *
 from pecnet.preprocessing import DataPreprocessor
 
 
 
-class ErrorNetwork():
+class ErrorNetwork:
     """
     This class represents the Pecnet Model's Error Network, which is part of a larger predictive model. Its main function
     is to predict errors in a previous prediction layer, and then provide corrected predictions to the Final Network.
@@ -25,7 +18,7 @@ class ErrorNetwork():
     Methods:
         __init__: Initializes the ErrorNetwork instance.
         init_network: Initializes and configures the network based on provided data from Variable Network.
-        __add_error_network: Adds an error correction network and performs the necessary train or test operation.
+        __add_error_network: Adds an error correction network and performs the necessary train or test operations.
         get_error_predictions: Returns the error predictions of the error network.
         get_compensated_error_predictions: Returns the compensated error predictions.
         get_target_values: Returns the errors of errors.
@@ -63,7 +56,7 @@ class ErrorNetwork():
         Args:
             x (numpy.ndarray): The sequential error input data for the error network.
             y (numpy.ndarray): The error output data for the error network.
-            error_denormalizer (float): The denormalization term for the error predictions.
+            error_denormalizer (numpy.ndarray): The denormalization term for the error predictions.
             compensated_preds (numpy.ndarray): The compensated predictions from the previous layer.Theoretically, it will be sended to the next cascaded layer if added.
         
         Steps:
@@ -82,7 +75,7 @@ class ErrorNetwork():
         input_seq_size=x.shape[1]
         output_seq_size=y.shape[1]
 
-        print("Error Network is working...")
+        print("Mode: ", self.mode," Error Network is working...")
 
         if self.mode=='train':
 
@@ -94,8 +87,8 @@ class ErrorNetwork():
             model = self.models[self.__model_index]  # Get the model from the list
             self.__model_index += 1                  # Increment the model index   
 
+        #TODO:Test if error normalization and denormalization work
         err_preds=model.predict(x)#+error_denormalizer
-     
         err_comp_preds=compensated_preds-err_preds
         err_error=err_preds-y
 

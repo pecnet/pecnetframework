@@ -1,4 +1,6 @@
-from typing import List
+from typing import List, Any
+from copy import deepcopy
+from numpy import ndarray, dtype
 from pywt import wavedec
 import pandas as pd
 from pecnet.preprocessing.Normalizers import *
@@ -12,26 +14,44 @@ class DataPreprocessor:
         return cls._instance
 
     def __init__(self):
+
         if not hasattr(self, 'initialized'): # Check if instance is already initialized
             print("DataPreprocessor Initialized")
             self.initialized = True
             self.mode="train"
             self.scaler=Scaler()
+            self.normalizer = None
             self.window_normalizer=WindowNormalizer()
             self.mean_normalizer=MeanNormalizer()
+            self.__target_normalization_step_size = 1
+
+            self.__final_y_processed = None
+            self.__sequence_size = None
+            self.__error_sequence_size = None
+            self.__y_denormalization_term = None
+            self.__wavelet_type = None
+            self.__required_timestamps = None
+            self.__test_size_index = None
+
+            self.target = None
+            self.target_denormalization_term = None
+            self.target_scaler = None
+            self.target_normalizer = None
 
     def preprocess(self,
                    data: np.ndarray, 
-                   sampling_periods:List[int] = [1,4], 
-                   sampling_statistics:List[str] = ["mean"], 
+                   sampling_periods:List[int] = None,
+                   sampling_statistics:List[str] = None,
                    sequence_size:int = 4, 
                    error_sequence_size:int = 4, 
                    wavelet_type:str ="haar",
                    scale_factor=None,
-                   normalization_type=None,
+                   input_normalization_type=None,
+                   target_normalization_type="window_mean",
                    conjoincy=False,
                    test_ratio:float = 0.2
-                   ) -> List[np.ndarray]:
+                   ) -> tuple[
+        ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]]]:
         """
             Wrapper method --> Preprocesses the given data using wavelet transform and statistical analysis.
 
@@ -42,12 +62,20 @@ class DataPreprocessor:
                 sequence_size (int, optional): The size of the sequence for processing. Defaults to 4.
                 error_sequence_size (int, optional): The size of the sequence for error network. Defaults to 4.
                 wavelet_type (str, optional): Type of the wavelet to be used. Defaults to "haar".
+                scale_factor (float, optional): Scaling factor. Defaults to None.
+                input_normalization_type (str, optional): Input normalization type like min-max, standard. Defaults to None.
+                target_normalization_type (str, optional): Target normalization type like window-mean, ema. Defaults to window-mean.
+                conjoincy (bool, optional): Conjunct or not. Defaults to False. It defines the way of divide-slide operation on the data.
                 test_ratio (float, optional): The ratio of the test data. Defaults to 0.2.
 
             Returns:
-                List[np.ndarray]: A list of NumPy arrays containing the processed data for training or test.
+                Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: A tuple of NumPy arrays containing the processed data for training or test.
         """
-        
+
+        #assings default values for mutable variables
+        sampling_periods = sampling_periods or [1, 4]
+        sampling_statistics = sampling_statistics or ["mean"]
+
         #set sequence and error sequence size to process later
         self.__error_sequence_size=error_sequence_size
         self.__sequence_size=sequence_size
@@ -56,10 +84,9 @@ class DataPreprocessor:
         self.__wavelet_type=wavelet_type
 
         #check if data is sufficient for processing
-        sorted_sampling_periods=np.sort(sampling_periods)[::-1]
+        sorted_sampling_periods=np.sort(sampling_periods)[::-1].tolist()
         biggest_period=max(sampling_periods)
-        required_timestamps=None
-        
+
         if conjoincy:
             required_timestamps=biggest_period+sequence_size-1
         else:
@@ -80,27 +107,31 @@ class DataPreprocessor:
         test_part = data[split_index:]
 
         #scale the data before processing
-        if scale_factor!=None:
+        if scale_factor is not None:
             train_part=self.scaler.fit_scale1D(train_part,scale_factor)
             test_part=self.scaler.scale1D(test_part)
 
+            if self.target_scaler is None:
+                self.target_scaler = deepcopy(self.scaler)
+
         #TODO:expand for other normalizations
         #init normalizer if normalization is required
-        if normalization_type==None:
+        if input_normalization_type is None:
             self.normalizer=None
         else:
-            self.normalizer=Normalizer(normalization_type)
+            self.normalizer=Normalizer(input_normalization_type)
+            if self.target_normalizer is None:
+                self.target_normalizer = deepcopy(self.normalizer)
             
             # Train ve test verilerini normalize et
             train_part = self.normalizer.fit_transform(train_part.reshape(-1,1))
             test_part = self.normalizer.transform(test_part.reshape(-1,1))
 
-
         # Train ve test verilerini tekrar birleştir ve full data 'yı oluştur
-        data = np.concatenate([train_part, test_part])  
-        
+        data = np.concatenate([train_part, test_part])
+        raw_data = np.copy(data)
+
         #build sequences w.r.t. parameters
-        sequences=None;
         
         if conjoincy:
             sequences= self._build_conjoined_sequences(data, 
@@ -116,23 +147,40 @@ class DataPreprocessor:
                                          wavelet_type, 
                                          required_timestamps)
 
-        #normalize y then adjust x and y to have same length
-        self.__target_normalization_step_size=0
-        y,mean_y=self.window_normalizer.normalize_with_prewindow(data, required_timestamps,step_size=self.__target_normalization_step_size)
-        
-        y=np.array(y[required_timestamps:],dtype=np.float32) 
+
+        #normalize y with window_mean then adjust x and y to have same length
+        if target_normalization_type == "window_mean":
+            y, mean_y = self.window_normalizer.normalize_with_prewindow(
+                raw_data, required_timestamps, step_size=self.__target_normalization_step_size)
+            y = np.array(y[required_timestamps:], dtype=np.float32)
+            mean_y = np.array(mean_y[required_timestamps:], dtype=np.float32)
+        elif target_normalization_type == "ema":
+            y, mean_y = self.window_normalizer.normalize_with_ema(
+                raw_data, required_timestamps, step_size=self.__target_normalization_step_size)
+            y = np.array(y[required_timestamps:], dtype=np.float32)
+            mean_y = np.array(mean_y[required_timestamps:], dtype=np.float32)
+        elif target_normalization_type is None:
+            y = np.array(raw_data[required_timestamps:], dtype=np.float32)
+            mean_y = np.zeros_like(y)
+        else:
+            raise ValueError(f"Unsupported target_normalization_type: {target_normalization_type}")
+
         self.__final_y_processed=np.append(y,0).reshape(-1,1) # add a zero to the end as a placeholder for the tomorrow's prediction
-
-        
-        mean_y=np.array(mean_y[required_timestamps:],dtype=np.float32)
         self.__y_denormalization_term= np.append(mean_y,0).reshape(-1,1) # add a zero mean to the end as a placeholder for the tomorrow's prediction
-        
-        X=sequences[:len(y)+1].astype(np.float32) #add 1 for the tomorrow's prediction
 
-        #split train and test data --> TODO: the boundaries should be sharpened
-        self.__test_size_index=int(len(X)*test_ratio) #same as split_index
+        if self.target is None:
+            self.target = self.__final_y_processed.copy()
+
+        if self.target_denormalization_term is None:
+            self.target_denormalization_term = self.__y_denormalization_term.copy()
+
+        X=np.asarray(sequences[:len(y)+1]) #add 1 for the tomorrow's prediction
+
+        #split train and test data
+        self.__test_size_index=int(len(X)*test_ratio) #TODO: there is also split_index, make it one variable
         X_train, X_test = X[:-self.__test_size_index], X[-self.__test_size_index:]
         y_train, y_test = self.__final_y_processed[:-self.__test_size_index], self.__final_y_processed[-self.__test_size_index:]
+
         return X_train,X_test,y_train,y_test
 
     def preprocess_errors(self,errors: np.ndarray) -> List[np.ndarray]:
@@ -173,7 +221,7 @@ class DataPreprocessor:
 
             Args:
                 data (np.ndarray): The data to be processed, as a NumPy array.
-                sorted_sampling_periods (List[int]): List of sampling periods.
+                sorted_sampling_periods (np.ndarray of int): List of sampling periods.
                 sampling_statistics (List[str]): List of sampling statistics to be calculated, like 'mean'.
                 sequence_size (int): The size of the sequence for processing.
                 wavelet_type (str): Type of the wavelet to be used.
@@ -298,15 +346,15 @@ class DataPreprocessor:
             Builds past data windows for each time step.
 
             Args:
-                values (List): The data to be processed, as a NumPy array.
+                values (np.ndarray): The data to be processed, as a NumPy array.
                 window_length (int): The element quantity included in the window.
             
             Returns:
-                List[List]: A list of lists containing the past data windows for eeach timestamp.
+                List[List]: A list of lists containing the past data windows for each timestamp.
         """
         windowed_data = []
 
-        # for each timestamp, we need to build the past data
+        # for each timestamp, we need to build the past data #TODO : that is very slow, make it vectoral
         for i in range(0, len(values)-window_length+1):
             window = values[i:i+window_length].flatten()
             windowed_data.append(window)
@@ -315,117 +363,8 @@ class DataPreprocessor:
 
     def _build_sampling_groups(self, windowed_data, sampling_period):
         """
-        Builds sampling groups for the given windowed data and sampling period.\
-        For example, if the sampling period is 4, the first group will be the first 4 elements of the windowed data,\ 
-        the second group will be the next 4 elements of the windowed data, and so on.
-        
-        Args:
-             windowed_data (List): The windowed data to be sampled.
-             sampling_period (int): The sampling period.
-        Returns:
-            List[List]: A list of lists containing the sampling groups.          
-        """
-        sampling_windows = []
-
-        # Add full windows in reverse order
-        for i in range(len(windowed_data), 0, -sampling_period):
-            window = windowed_data[i-sampling_period:i]
-            sampling_windows.append(window)
-
-        # Add the last window with remaining elements
-        remainder_size = len(windowed_data) % sampling_period
-        if remainder_size > 0:
-            last_window = windowed_data[:remainder_size]
-            sampling_windows[-1] = last_window
-
-        # reverse the order of windows
-        sampling_windows = sampling_windows[::-1]
-        
-        return sampling_windows
-
-    def _calculate_statistics(self,
-                              data: List[float],
-                              statistics_to_calculate: str) -> [int, float]:
-        """
-            Calculates the given statistics for the given data group.
-
-            Args:
-                data (List): The data group to be processed.
-                statistics_to_calculate (str): The statistics to be performed on the given data group.
-
-            Returns:
-                [int, float]: The calculated statistics.    
-        """
-
-        # calculate statistics
-        data = pd.Series(data)
-        
-        if statistics_to_calculate == "mean":
-            return np.mean(data, axis=0)
-        elif statistics_to_calculate == "std":
-            return np.std(data, axis=0)
-        elif statistics_to_calculate == "max":
-            return np.max(data, axis=0)
-        elif statistics_to_calculate == "min":
-            return np.min(data, axis=0)
-        elif statistics_to_calculate == "median":
-            return np.median(data, axis=0)
-        elif statistics_to_calculate == "mode":
-            return data.mode()[0]
-        elif statistics_to_calculate == "count":
-            return len(data)
-        elif statistics_to_calculate == "skew":
-            return data.skew()
-        elif statistics_to_calculate == "kurtosis":
-            return data.kurtosis()
-        else:
-            raise ValueError(f"Unsupported statistics: {statistics_to_calculate}")
-    
-    def _calculate_dwt(self,
-                        array: np.ndarray, 
-                        wavelet_type: str,
-                        level: int=None) -> List[float]:
-
-        """ Returns the coefficients of the discrete wavelet transform of the given array except first coefficient.
-            Args:
-                array (np.ndarray): The array to be processed.
-                wavelet_type (str): The type of the wavelet to be used.
-                level (int, optional): The level of the wavelet transform. if None as default, possible max. level is used.
-            
-            Returns:
-                List[float]: The coefficients of the discrete wavelet transform of the given array except first coefficient.
-        """
-    
-       
-        coeffs = wavedec(array, wavelet_type, mode="zero", level=level)      #default mode="zero"
-       
-        return np.concatenate(coeffs)[1:]
-    
-    def build_windows(self, values, window_length):
-
-        """
-            Builds past data windows for each time step.
-
-            Args:
-                values (List): The data to be processed, as a NumPy array.
-                window_length (int): The element quantity included in the window.
-            
-            Returns:
-                List[List]: A list of lists containing the past data windows for eeach timestamp.
-        """
-        windowed_data = []
-
-        # for each timestamp, we need to build the past data
-        for i in range(0, len(values)-window_length+1):
-            window = values[i:i+window_length].flatten()
-            windowed_data.append(window)
-
-        return windowed_data
-
-    def _build_sampling_groups(self, windowed_data, sampling_period):
-        """
-        Builds sampling groups for the given windowed data and sampling period.\
-        For example, if the sampling period is 4, the first group will be the first 4 elements of the windowed data,\ 
+        Builds sampling groups for the given windowed data and sampling period.
+        For example, if the sampling period is 4, the first group will be the first 4 elements of the windowed data,
         the second group will be the next 4 elements of the windowed data, and so on.
         
         Args:
@@ -466,7 +405,7 @@ class DataPreprocessor:
                 [int, float]: The calculated statistics.    
         """
 
-        # calculate statistics
+        #calculate statistics
         data = pd.Series(data)
         
         if statistics_to_calculate == "mean":
@@ -504,8 +443,7 @@ class DataPreprocessor:
             Returns:
                 List[float]: The coefficients of the discrete wavelet transform of the given array except first coefficient.
         """
-    
-       
+
         coeffs = wavedec(array, wavelet_type, mode="zero", level=level)      #default mode="zero"
        
         return np.concatenate(coeffs)[1:]
@@ -518,29 +456,26 @@ class DataPreprocessor:
         Returns: time shifted and size-trimmed y values for test and train data
         """
         if self.mode=="train":
-            return self.__final_y_processed[self.__error_sequence_size+1:-self.__test_size_index]
+            return self.target[self.__error_sequence_size+1:-self.__test_size_index]
         else:
-            return self.__final_y_processed[-self.__test_size_index+self.__error_sequence_size+1:]
+            return self.target[-self.__test_size_index+self.__error_sequence_size+1:]
 
     
     def get_final_denormalization_term(self):
         """
         Returns: time shifted and size-trimmed y denormalization values for test and train data
+        Explanation:
+        - The offset (error_sequence_size + 1) is windowing offset + 1 unit time shift
         """        
         if self.mode=="train":
-            return self.__y_denormalization_term[self.__error_sequence_size+1:-self.__test_size_index]
+            return self.target_denormalization_term[self.__error_sequence_size+1:-self.__test_size_index]
         else:  
-            return self.__y_denormalization_term[-self.__test_size_index+self.__error_sequence_size+1:]
+            return self.target_denormalization_term[-self.__test_size_index+self.__error_sequence_size+1:]
    
-    def generate_final_normalization_term_for_last_pred_element(self,last_pred):
+    def generate_final_normalization_term_for_last_pred_element(self):
         
-        raw_targets=self.__final_y_processed+self.__y_denormalization_term
-        norm_term=None
-
-        if(self.__target_normalization_step_size == 0):
-            norm_term=np.mean(np.append(last_pred.flatten(),raw_targets[-self.__required_timestamps:-1].flatten()))
-        else:
-            norm_term=np.mean(raw_targets[-(self.__required_timestamps+self.__target_normalization_step_size):-self.__target_normalization_step_size].flatten())
+        raw_targets=self.target+self.target_denormalization_term
+        norm_term=np.mean(raw_targets[-(self.__required_timestamps+self.__target_normalization_step_size):-self.__target_normalization_step_size].flatten())
         
         return norm_term.reshape(-1,1)
 

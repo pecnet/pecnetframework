@@ -1,14 +1,48 @@
 from typing import List
 import numpy as np
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_percentage_error
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_percentage_error, mean_absolute_error
 from pecnet.preprocessing import DataPreprocessor
 
 class Pecnet:
     def __init__(self):
+
+        self.mode="train"
         self.final_network = None
         self.error_network = None
-        self.variable_network = None
-    
+        self.variable_networks = []
+
+    def add_variable_network(self, variable_network):
+        """
+        Adds a VariableNetwork instance to the Pecnet model.
+
+        Args:
+            variable_network (VariableNetwork): The variable network to be added.
+        """
+        self.variable_networks.append(variable_network)
+
+    def get_next_variable_network_target_values(self,varnet_index=None):
+        """
+        Retrieves the last target values from the most recently added variable network.
+        This is used as the target values for the next variable network when y_train is not provided.
+
+        Args:
+            varnet_index (int, optional): Index of the current VariableNetwork during test phase
+            to retrieve correct target values hierarchically .
+        Returns:
+            np.ndarray: Last target values from the most recent variable network.
+        """
+        if not self.variable_networks:
+            raise ValueError("No variable networks found. Add at least one variable network before calling this method.")
+
+        if self.mode == "train":
+            return self.variable_networks[-1].get_Last_target_values()
+        elif self.mode == "test":
+            if varnet_index is None:
+                raise ValueError("Variable Network index must be set correctly in test mode.")
+            return self.variable_networks[varnet_index].get_Last_target_values()
+        else:
+            raise ValueError("Invalid mode. Choose from 'train' or 'test'.")
+
     def get_shifted_compensated_errors(self):
         """
         Adjusts timestamps of compensated errors to be used in error network.
@@ -16,7 +50,7 @@ class Pecnet:
         Returns: 
             List[float] : Errors shifted 1 step back in time.
         """
-        return self.variable_network.get_compensated_errors()[:-1]
+        return self.variable_networks[-1].get_compensated_errors()[:-1]
     
     def get_last_compensated_predictions(self):
         """
@@ -24,7 +58,7 @@ class Pecnet:
         Returns: 
             List[float] : Last compensated predictions in pipeline.
         """
-        return self.variable_network.get_last_compensated_predictions()
+        return self.variable_networks[-1].get_last_compensated_predictions()
     
     def get_all_preds(self):
         """
@@ -34,7 +68,11 @@ class Pecnet:
         """
         #cascade predictions will be trimmed for final network,1 for time shifting, others for error sequence size 
         adjust_size=DataPreprocessor().get_error_sequence_size()+1
-        adjusted_preds= [preds[adjust_size:] for preds in self.variable_network.get_predictions()]
+        adjusted_preds = []
+
+        for varnet in self.variable_networks:
+            preds = [p[adjust_size:] for p in varnet.get_predictions()]
+            adjusted_preds.extend(preds)
         
         #add error predictions to the end of the prediction list
         adjusted_preds.append(self.error_network.get_error_predictions())
@@ -44,23 +82,25 @@ class Pecnet:
         return  X_final
 
     def predict(self,
-                X_test: np.array,
-                test_truth: np.array) -> np.array:
+                *test_inputs: np.array,
+                test_target: np.array) -> np.array:
 
-        """Predicts X_test and uses test_truth values to generate errors for error network,they comes 1 step back in time.
+        """Tries to predict test_target using test_input values to generate errors for error network,they comes 1 step back in time.
         Args:  
-            X_test: The test data to be predicted.
-            test_truth: Ground truth  values to be used for error calculation.
+            test_inputs: The test data to be used for prediction.
+            test_target: Ground truth  values to be used for error calculation.
         Returns:
-            List of np.arrays: [prediction, time_shifted_test_truth]
+            np.ndarray: final predictions of the pecnet model.
         """
 
         #switches mode to test, so that it can be used for prediction
         self.switch_mode("test")
 
-        #predicts X_test TODO: add multiview support, that'll also solve network interaction problems easily
+        #predicts test_target using hierarchical networks fed with multivariate data
+        for i, varnet in enumerate(self.variable_networks):
+            varnet.init_network(test_inputs[i], test_target) if i == 0 else (
+                varnet.init_network(test_inputs[i],self.get_next_variable_network_target_values(i-1))) #gets target from last network.
 
-        self.variable_network.init_network(X_test, test_truth)
         self.error_network.init_network(self.get_shifted_compensated_errors(),self.get_last_compensated_predictions())
         self.final_network.init_network(self.get_all_preds())
 
@@ -91,8 +131,10 @@ class Pecnet:
         r2 = r2_score(y, pred)
         # calculate mape
         mape = mean_absolute_percentage_error(y, pred)
+        # calculate mae
+        mae = mean_absolute_error(y, pred)
         
-        return f"RMSE: {round(rmse,3)} R2 : {round(r2,3)}, MAPE: {round(mape,3)}"
+        return f"RMSE: {round(rmse,3)} R2 : {round(r2,3)},MAE: {round(mae,3)}, MAPE: {round(mape,3)}"
 
     def switch_mode(self, mode):
         """
@@ -101,8 +143,11 @@ class Pecnet:
             mode: "train" or "test"
         """
        
-        self.variable_network.switch_mode(mode)
+        for varnet in self.variable_networks:
+            varnet.switch_mode(mode)
         self.error_network.switch_mode(mode)
         self.final_network.switch_mode(mode)
 
         DataPreprocessor().switch_mode(mode)
+
+        self.mode= mode;

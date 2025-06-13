@@ -23,7 +23,7 @@ class Normalizer:
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
     
-class MeanNormalizer():
+class MeanNormalizer:
 
     def __init__(self):
         self.mean = None
@@ -40,7 +40,7 @@ class MeanNormalizer():
         self.mean = np.mean(data)
         return data - self.mean
 
-class WindowNormalizer():
+class WindowNormalizer:
 
     def __init__(self):
         self.mean = None
@@ -57,21 +57,22 @@ class WindowNormalizer():
         self.mean = np.mean(data, 1)
         return data - self.mean[:, np.newaxis]
 
-    def normalize_with_prewindow(self,data,window_length,step_size=0):
-        
+    def normalize_with_prewindow(self,data,window_length,step_size=1):
+
         if window_length <= 0 or window_length > len(data):
             raise ValueError("Window length must be positive and less than or equal to the length of the data.")
         if step_size < 0 or step_size > len(data):
             raise ValueError("Step size must be non-negative and less than or equal to the length of the data.")
-
+        if step_size == 0:
+            raise ValueError("step_size=0 leads to leakage! Please use step_size >= 1.")
 
         normalized_data = []
         normalization_values = []  # List to store the mean values used for normalization
-        
+
         for i in range(len(data)):
-                
+
                 start_index = max(0, i - window_length-step_size+1)
-                
+
                 if window_length+step_size-1 > i:
                     end_index=i-step_size+1
                 else:
@@ -82,7 +83,7 @@ class WindowNormalizer():
                 else:
                     # Calculate the mean values in the window
                     window_mean = np.mean(data[start_index:end_index])
-            
+
                 # Store the mean value
                 normalization_values.append(window_mean)
 
@@ -92,9 +93,41 @@ class WindowNormalizer():
 
         return normalized_data,normalization_values
 
-class Scaler():
+    def normalize_with_ema(self, data, required_timestamps, step_size=1):
+        """
+        Performs EMA-based normalization on target y.
+        Leakage-free (uses only past data).
+        Size stays same.
+        """
+        window_length = required_timestamps
+        alpha = 2 / (window_length + 1)
+
+        normalized_y = []
+        ema_values = []
+        ema_prev = data[required_timestamps - step_size]
+
+        for i in range(required_timestamps):
+            ema_values.append(0.0)
+            normalized_y.append(data[i] - 0.0)  # i.e. data[i] itself
+
+        # Start from required_timestamps onward (shifted window effect)
+        for i in range(required_timestamps, len(data)):
+            ema_current = alpha * data[i - step_size] + (1 - alpha) * ema_prev
+            ema_values.append(ema_current)
+
+            normalized_value = data[i] - ema_current
+            normalized_y.append(normalized_value)
+
+            ema_prev = ema_current
+
+        return normalized_y, ema_values
+
+
+class Scaler:
     
         def __init__(self):
+            self.min = None
+            self.max = None
             self.scale_coeff=None
         
         def fit_scale1D(self, data,scale_factor):

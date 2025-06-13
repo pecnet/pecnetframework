@@ -1,16 +1,7 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
-import numpy as np
-import matplotlib.pyplot as plt
-
 from pecnet.models import *
 from pecnet.preprocessing import DataPreprocessor
 
-
-
-class FinalNetwork():
+class FinalNetwork:
     """
         A network designed to integrate and finalize predictions from a cascaded sequence of models.
 
@@ -49,7 +40,7 @@ class FinalNetwork():
              
     def __add_final_network(self, x,y): # x,y are 2D numpy arrays.  
         """
-        Private method to add a final network layer.
+        Adds a final network layer.
 
         This method handles the final stage of testing or training. It initializes and trains
         a new model or loads an existing model for prediction, based on the current mode of the network.
@@ -65,14 +56,14 @@ class FinalNetwork():
         input_seq_size=x.shape[1]
         output_seq_size=y.shape[1]
         
-        print("Final Network is working...")
+        print("Mode: ",self.mode, " Final Network is working...")
 
         if self.mode=='train':
 
             model=BasicNN(sample_size=samp_size,input_sequence_size=input_seq_size,output_sequence_size=output_seq_size)            
             model.fit(x,y)
             self.model=model   # Store the trained model
-        
+
         elif self.mode=='test':
             model = self.model       # Get the trained model 
 
@@ -88,20 +79,22 @@ class FinalNetwork():
         Denormalizes and unscales the predictions.
         """
         denormalization_term= DataPreprocessor().get_final_denormalization_term()
-       
+
         if self.mode=='test':
-            denormalization_term[-1]=DataPreprocessor().generate_final_normalization_term_for_last_pred_element(preds[-1])
+            denormalization_term[-1]=DataPreprocessor().generate_final_normalization_term_for_last_pred_element()
             
         denormalized_preds=preds+denormalization_term
 
-        if(DataPreprocessor().normalizer):
-            denormalized_preds=DataPreprocessor().normalizer.inverse_transform(denormalized_preds)
+        if DataPreprocessor().target_normalizer:
+            denormalized_preds=DataPreprocessor().target_normalizer.inverse_transform(denormalized_preds)
         
-        if(DataPreprocessor().scaler.scale_coeff is not None):
-            unscaled_preds=DataPreprocessor().scaler.unscale1D(denormalized_preds)
+        if DataPreprocessor().target_scaler is not None:
+            unscaled_preds=DataPreprocessor().target_scaler.unscale1D(denormalized_preds)
             return unscaled_preds
         else:
             return denormalized_preds
-         
+
+
+
     def switch_mode(self,mode):
         self.mode=mode             

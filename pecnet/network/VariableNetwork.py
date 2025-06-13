@@ -17,7 +17,7 @@ class VariableNetwork():
 
     Variable Network, which is used in a predictive modeling pipeline to handle different frequency bands 
     of one feature from input data, keeps predictions, errors and compensated predictions generated from 
-    its cascaded networks. It supports both training and testing modes, and it can be instantiated iteratively 
+    its cascaded networks. It includes both training and testing modes, and it can be instantiated iteratively
     to handle multi-dimensional input data.
 
     Attributes:
@@ -52,7 +52,10 @@ class VariableNetwork():
 
         if X_bands.ndim!=4 or y_band.ndim!=2:
             raise ValueError("x should be 4D array, y should be 2D array. Please reshape them before proceeding.")
-        
+
+        # TRUNCATE X_bands to match y_band length (first dimension)
+        X_bands = X_bands[:y_band.shape[0], ...]
+
         data_length,frequencies,statistics,sequences=X_bands.shape      
         
         self.__model_index=0                   # index of the model in the cascaded network
@@ -71,7 +74,7 @@ class VariableNetwork():
                 if np.all(cascad_data_x == 0): # all values will be 0 for frequency=1 and statistic="std"
                     continue; 
 
-                print("Cascaded Neural Network for frequency {} and statistic {} is working...".format(frequency,statistic))                                                                                                                                                                     
+                print("Mode: ", self.mode, " Cascaded Neural Network for frequency {} and statistic {} is working...".format(frequency,statistic))
 
                 preds,errors,compensated_preds=self.__add_cascaded_network(cascad_data_x,self.__target_values[-1])
                 
@@ -95,7 +98,9 @@ class VariableNetwork():
 
         Returns:
             tuple: A tuple containing the predictions, errors, and compensated predictions from the current cascaded network.
-        """ 
+        """
+        x = x.astype(np.float32)
+        y = y.astype(np.float32)
 
         samp_size=x.shape[0]
         input_seq_size=x.shape[1]

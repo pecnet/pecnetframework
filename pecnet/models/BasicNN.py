@@ -46,6 +46,8 @@ class BasicNN(nn.Module):
         
         super().__init__()
 
+        self.device = None
+
         self.init_hyperparameters(sample_size,input_sequence_size,output_sequence_size)
         self.init_model()
         self.init_devices()  
@@ -135,7 +137,7 @@ class BasicNN(nn.Module):
 
 
             print(f"Epoch {epoch+1}/{self.epoch_size}, Total Loss: {total_loss:.4f}")
-            
+
             if(total_loss<self.learning_rate/100):
                 print(f"Stopping early at Epoch {epoch+1} due to reaching target loss.")
                 break
