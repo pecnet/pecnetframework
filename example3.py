@@ -22,12 +22,12 @@ if __name__ == '__main__':
     preprocessed_inputs_train=[]
     preprocessed_inputs_test=[]
 
-    target_series = df[target_column].dropna().values
+    target_series = np.array(df[target_column].dropna().values)
 
     # Preprocess target first → this will define DataPreprocessor().target_*
     X_train_0, X_test_0, y_train, y_test = DataPreprocessor().preprocess(
         data=target_series,
-        sampling_periods=[1, 2, 3],
+        sampling_periods=[1, 2,3],
         sampling_statistics=["mean", "std"],
         sequence_size=4,
         error_sequence_size=8,
@@ -42,11 +42,11 @@ if __name__ == '__main__':
     preprocessed_inputs_test.append(X_test_0)
 
     for col in columns_to_process:
-        series = df[col].dropna().values
+        series = np.array(df[col].dropna().values)
 
         X_train, X_test, _, _ = DataPreprocessor().preprocess(
             data=series,
-            sampling_periods=[1,2],
+            sampling_periods=[1,2,3],
             sampling_statistics=["mean","std"],
             sequence_size=4,
             error_sequence_size=8,
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     # Set hyperparameters
     Utility.set_hyperparameters(
         learning_rate=0.001,
-        epoch_size=100,
+        epoch_size=150,
         batch_size=96,
         hidden_units_sizes=[16,32,16,8]
     )
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     preds = pecnet.predict(*preprocessed_inputs_test, test_target=y_test)
 
     # Tomorrow's prediction
-    print("Tomorrow's prediction: ", preds[-1])
+    print("Last northing pred. coord: ", preds[-1])
 
     # Evaluate
     result = pecnet.evaluate(preds, target_series)

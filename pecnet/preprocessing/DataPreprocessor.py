@@ -132,7 +132,7 @@ class DataPreprocessor:
         raw_data = np.copy(data)
 
         #build sequences w.r.t. parameters
-        
+        print("Initial data size:",len(data), "------")
         if conjoincy:
             sequences= self._build_conjoined_sequences(data, 
                                          sorted_sampling_periods, 
@@ -164,7 +164,7 @@ class DataPreprocessor:
             mean_y = np.zeros_like(y)
         else:
             raise ValueError(f"Unsupported target_normalization_type: {target_normalization_type}")
-
+        print("X: ",len(sequences), "Y: ",len(y),"---before adjustment",)
         self.__final_y_processed=np.append(y,0).reshape(-1,1) # add a zero to the end as a placeholder for the tomorrow's prediction
         self.__y_denormalization_term= np.append(mean_y,0).reshape(-1,1) # add a zero mean to the end as a placeholder for the tomorrow's prediction
 
@@ -174,14 +174,14 @@ class DataPreprocessor:
         if self.target_denormalization_term is None:
             self.target_denormalization_term = self.__y_denormalization_term.copy()
 
-        X=np.asarray(sequences[:len(y)+1]) #add 1 for the tomorrow's prediction
+        X=np.asarray(sequences[:len(self.target)]) #includes tomorrow prediction as placeholder for now
 
         #split train and test data
         self.__test_size_index=int(len(X)*test_ratio) #TODO: there is also split_index, make it one variable
         X_train, X_test = X[:-self.__test_size_index], X[-self.__test_size_index:]
         y_train, y_test = self.__final_y_processed[:-self.__test_size_index], self.__final_y_processed[-self.__test_size_index:]
 
-        return X_train,X_test,y_train,y_test
+        return X_train,X_test,y_train,y_test # only main (first) network's used as y.
 
     def preprocess_errors(self,errors: np.ndarray) -> List[np.ndarray]:
         """

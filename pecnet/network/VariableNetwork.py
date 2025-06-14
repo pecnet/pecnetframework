@@ -53,9 +53,6 @@ class VariableNetwork():
         if X_bands.ndim!=4 or y_band.ndim!=2:
             raise ValueError("x should be 4D array, y should be 2D array. Please reshape them before proceeding.")
 
-        # TRUNCATE X_bands to match y_band length (first dimension)
-        X_bands = X_bands[:y_band.shape[0], ...]
-
         data_length,frequencies,statistics,sequences=X_bands.shape      
         
         self.__model_index=0                   # index of the model in the cascaded network
