@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     #preprocesses data and splits it into train and test sets
     X_train, X_test, y_train, y_test=DataPreprocessor().preprocess(data=aapl_prices,
-                                                                sampling_periods=[1,2,3],
+                                                                sampling_periods=[1,2,4],
                                                                 sampling_statistics=["mean","std"],
                                                                 sequence_size=4,
                                                                 error_sequence_size=8,
@@ -46,7 +46,7 @@ if __name__ == '__main__':
                                                                 test_ratio=0.05)
 
     X_train_index, X_test_index, _, _=DataPreprocessor().preprocess(data=nasdaq100index_prices,
-                                                                sampling_periods=[1,2,3],
+                                                                sampling_periods=[1,2,4],
                                                                 sampling_statistics=["mean","std"],
                                                                 sequence_size=4,
                                                                 error_sequence_size=8,
