@@ -114,10 +114,10 @@ class BasicNN(nn.Module):
 
     def fit(self, input_values, target_values):
 
-        input_tensor = torch.tensor(input_values)
-        output_tensor = torch.tensor(target_values)
+        input_tensor = torch.tensor(input_values).float()
+        output_tensor = torch.tensor(target_values).float()
         dataset = TensorDataset(input_tensor, output_tensor)
-        train_loader=DataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=False)
+        train_loader=DataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)
 
         for epoch in range(self.epoch_size):
 
@@ -133,13 +133,13 @@ class BasicNN(nn.Module):
                 self.optimizer.step()
                 self.optimizer.zero_grad()
   
-                total_loss += loss.item()
+                total_loss += loss.item() * inputs.size(0)
 
+            epoch_loss = total_loss / len(dataset)
+            print(f"Epoch {epoch + 1}/{self.epoch_size}, Avg. Loss per Sample: {epoch_loss:.5f}")
 
-            print(f"Epoch {epoch+1}/{self.epoch_size}, Total Loss: {total_loss:.4f}")
-
-            if(total_loss<self.learning_rate/100):
-                print(f"Stopping early at Epoch {epoch+1} due to reaching target loss.")
+            if total_loss<self.learning_rate/100:
+                print(f"Stopping early at epoch {epoch+1} due to reaching threshold loss.")
                 break
         
     def predict(self, X):
@@ -147,7 +147,7 @@ class BasicNN(nn.Module):
         self.eval()  # Set the model to evaluation mode
 
         with torch.no_grad():
-            inputs = torch.tensor(X,device=self.device)
+            inputs = torch.tensor(X, dtype=torch.float32, device=self.device)
             predictions = self(inputs)
             return predictions.detach().cpu().numpy()
 
@@ -160,8 +160,13 @@ if __name__ == "__main__":
     sample_size=len(input_values)
     input_sequence_size=1
     output_sequence_size=1
-    
-    model=BasicNN(sample_size,input_sequence_size,output_sequence_size,epoch_size=1000)
+
+    Utility.set_hyperparameters(learning_rate=0.001,
+                                epoch_size=300,
+                                batch_size=96,
+                                hidden_units_sizes=[16,32,16,8])
+
+    model=BasicNN(sample_size,input_sequence_size,output_sequence_size)
     model.fit(input_values,target_values)
     predictions=model.predict(input_values)
 
@@ -172,4 +177,4 @@ if __name__ == "__main__":
     sns.lineplot(x=input_values.flatten(), y=target_values.flatten(),color="red",linewidth=2.5)
     plt.ylabel("Actual")
     plt.xlabel("X")
-    plt.savefig("C:\\Users\\srknm\\Desktop\\BasicSine.png")
+    plt.savefig("BasicSine.png")

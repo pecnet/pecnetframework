@@ -56,12 +56,14 @@ if __name__ == '__main__':
                                                                 target_normalization_type="window_mean", #window_mean, ema etc.
                                                                 conjoincy=False,
                                                                 test_ratio=0.05)
+    # set a seed for reproducibility
+    Utility.set_seed(42)
 
     # #sets hyperparameters for pecnet framework
     Utility.set_hyperparameters(learning_rate=0.001,
-                                epoch_size=300,
+                                epoch_size=400,
                                 batch_size=96,
-                                hidden_units_sizes=[16,32,16,8])
+                                hidden_units_sizes=[32,64,32,16])
 
     #acts like fit() method
 

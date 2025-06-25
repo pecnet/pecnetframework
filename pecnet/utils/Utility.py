@@ -1,12 +1,50 @@
 import os
 import pandas as pd
 import numpy as np
+import torch
+import random
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 
 class Utility:
 
     heuristic=False
+
+    @staticmethod
+    def set_seed(seed: int = 42):
+        """
+        Sets global seed for NumPy, Python, PyTorch and OS hash to ensure reproducibility.
+
+        Args:
+            seed (int): The random seed to set.
+        """
+        np.random.seed(seed)
+        random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        os.environ['PYTHONHASHSEED'] = str(seed)
+
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    @staticmethod
+    def set_hyperparameters(heuristic=False,learning_rate=0.001,epoch_size=1000,batch_size=32,hidden_units_sizes=[32,16]):
+        """
+        Sets hyperparameters for pecnet framework.
+        if you just set heuristic=True, that means:
+        1-)learning_rate=0.01
+        2-)epoch_size=300
+        3-)batch_size is square root of sample size
+        4-)The number of hidden neurons in first layer is 2/3 the size of the input layer, plus the size of the output layer.
+        5-)The number of hidden neurons in second layer is :
+        (sample_size/8*(input_sequence_size+output_sequence_size))-first_layer size and 8 is a scale factor, which can be changed.
+        There are 2 hidden layers in total. Because, there is currently no theoretical reason to use neural networks with any more than two hidden layers
+        """
+        Utility.heuristic=heuristic
+        Utility.learning_rate=learning_rate
+        Utility.epoch_size=epoch_size
+        Utility.batch_size=batch_size
+        Utility.hidden_units_sizes=hidden_units_sizes
 
     @staticmethod
     def get_utility_path():
@@ -78,24 +116,6 @@ class Utility:
         else:
             plt.show()
 
-    @staticmethod
-    def set_hyperparameters(heuristic=False,learning_rate=0.001,epoch_size=1000,batch_size=32,hidden_units_sizes=[32,16]):
-        """
-        Sets hyperparameters for pecnet framework.
-        if you just set heuristic=True, that means:
-        1-)learning_rate=0.01 
-        2-)epoch_size=300     
-        3-)batch_size is square root of sample size
-        4-)The number of hidden neurons in first layer is 2/3 the size of the input layer, plus the size of the output layer.
-        5-)The number of hidden neurons in second layer is :
-        (sample_size/8*(input_sequence_size+output_sequence_size))-first_layer size and 8 is a scale factor, which can be changed.
-        There are 2 hidden layers in total. Because, there is currently no theoretical reason to use neural networks with any more than two hidden layers
-        """
-        Utility.heuristic=heuristic
-        Utility.learning_rate=learning_rate
-        Utility.epoch_size=epoch_size
-        Utility.batch_size=batch_size
-        Utility.hidden_units_sizes=hidden_units_sizes
     
     @staticmethod
     def make_pct(data):
