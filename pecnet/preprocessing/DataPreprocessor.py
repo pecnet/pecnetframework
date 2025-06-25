@@ -1,9 +1,11 @@
 from typing import List, Any
 from copy import deepcopy
 from numpy import ndarray, dtype
+from numpy.lib.stride_tricks import sliding_window_view
 from pywt import wavedec
 import pandas as pd
 from pecnet.preprocessing.Normalizers import *
+from typing import Sequence
 
 class DataPreprocessor:
     _instance = None
@@ -185,7 +187,7 @@ class DataPreprocessor:
 
     def preprocess_errors(self,errors: np.ndarray) -> List[np.ndarray]:
         """
-        Performs operations on error data like windowization,normalization and wavelet transformation for error network
+        Performs operations on error data:  windowization,normalization and wavelet transformation for error network
 
         Args:
             errors (np.ndarray): Transferred compensated errors.
@@ -195,19 +197,17 @@ class DataPreprocessor:
         """
 
         # windowization
-        windowed_errors = self.build_windows(errors, window_length=self.__error_sequence_size) #sequence size and window size are same for error network
+        windowed_errors = self.build_windows(errors, window_length=self.__error_sequence_size) # window size is treated as sequence size in error network.
 
-        # generates normalized X,y errors and denormalization term
+        # normalized X,y errors and denormalization term
         X=windowed_errors[:-1]
-        #X=self.window_normalizer.fit_transform(X)
-        #y,mean_y=self.window_normalizer.normalize_with_prewindow(errors, self.__error_sequence_size,step_size=0)
-        y=np.array(errors[self.__error_sequence_size:], dtype=np.float32).reshape(-1,1)
-        denormalization_term=np.array(y[self.__error_sequence_size:],dtype=np.float32).reshape(-1,1)
+        y_errors=np.array(errors[self.__error_sequence_size:], dtype=np.float32).reshape(-1,1)
+        error_denormalization_term=np.array(y_errors[self.__error_sequence_size:],dtype=np.float32).reshape(-1,1)
 
         # wavelet transform for X, return coeffs as numpy array
-        X=np.apply_along_axis(self._calculate_dwt, 1, X,wavelet_type=self.__wavelet_type).astype(np.float32)
+        X_errors=np.apply_along_axis(self._calculate_dwt, 1, X.copy(),wavelet_type=self.__wavelet_type).astype(np.float32)
 
-        return X,y,denormalization_term
+        return X_errors,y_errors,error_denormalization_term
 
     def _build_sequences(self,
                          data, 
@@ -340,59 +340,79 @@ class DataPreprocessor:
         sequences=sequences.transpose(2, 0, 1, 3) #axes were adjusted same as build_windows method
         return sequences
 
-    def build_windows(self, values, window_length):
-
+    def build_windows(self,values: Sequence[float], window_length: int) -> np.ndarray:
         """
-            Builds past data windows for each time step.
+        Splits a 1D sequence into overlapping sliding windows of fixed length.
+        Parameters
+        ----------
+        values : Sequence[float]
+            1D input sequence (list, tuple, or np.ndarray).
+        window_length : int
+            Length of each sliding window.
 
-            Args:
-                values (np.ndarray): The data to be processed, as a NumPy array.
-                window_length (int): The element quantity included in the window.
-            
-            Returns:
-                List[List]: A list of lists containing the past data windows for each timestamp.
+        Returns
+        -------
+        np.ndarray
+            2D array of shape (n_windows, window_length), or empty if not enough data.
+
+        Example
+        -------
+        >>> build_windows([1, 2, 3, 4], 2)
+        array([[1, 2],
+               [2, 3],
+               [3, 4]])
         """
-        windowed_data = []
+        values = np.asarray(values)
+        if values.ndim == 2:
+            values = values.squeeze()
+        if values.ndim != 1:
+            raise ValueError(f"Expected 1D array, got shape {values.shape}")
 
-        # for each timestamp, we need to build the past data #TODO : that is very slow, make it vectoral
-        for i in range(0, len(values)-window_length+1):
-            window = values[i:i+window_length].flatten()
-            windowed_data.append(window)
-
-        return windowed_data
+        if len(values) < window_length:
+            return np.empty((0, window_length))  # to keep shape adjusted
+        return sliding_window_view(values, window_length).reshape(-1, window_length)
 
     def _build_sampling_groups(self, windowed_data, sampling_period):
         """
-        Builds sampling groups for the given windowed data and sampling period.
-        For example, if the sampling period is 4, the first group will be the first 4 elements of the windowed data,
-        the second group will be the next 4 elements of the windowed data, and so on.
-        
+        Builds sampling groups from a 2D windowed data array based on the given sampling period.
+
+        This function emulates the original behavior:
+        - It collects backward groups of size `sampling_period`,
+        - If a remaining group exists that doesn't fill the full window, it replaces the last group with it,
+        - Finally, it reverses the list to maintain chronological order.
+
         Args:
-             windowed_data (List): The windowed data to be sampled.
-             sampling_period (int): The sampling period.
+            windowed_data (List[List] or np.ndarray): The input 2D array containing time windowed values.
+            sampling_period (int): Number of elements in each group.
+
         Returns:
-            List[List]: A list of lists containing the sampled groups.          
+            List[np.ndarray]: A list of grouped samples (each as a 2D array).
         """
-        sampling_windows = []
+        data = np.asarray(windowed_data)
 
-        # Add full windows in reverse order
-        for i in range(len(windowed_data), 0, -sampling_period):
-            window = windowed_data[i-sampling_period:i]
-            sampling_windows.append(window)
+        if data.ndim == 1:
+            data = data.reshape(-1, 1)
 
-        # Add the last window with remaining elements
-        remainder_size = len(windowed_data) % sampling_period
+        groups = []
+
+        # Iterate backwards with stride = sampling_period
+        for i in range(len(data), 0, -sampling_period):
+            start_idx = max(i - sampling_period, 0)
+            group = data[start_idx:i]
+            groups.append(group)
+
+        # Replace last group with remainder if needed
+        remainder_size = len(data) % sampling_period
         if remainder_size > 0:
-            last_window = windowed_data[:remainder_size]
-            sampling_windows[-1] = last_window
+            groups[-1] = data[:remainder_size]
 
-        # reverse the order of windows
-        sampling_windows = sampling_windows[::-1]
-        
-        return sampling_windows
+        # Reverse to restore chronological order
+        groups.reverse()
+
+        return groups
 
     def _calculate_statistics(self,
-                              data: List[float],
+                              data: np.ndarray,
                               statistics_to_calculate: str) -> [int, float]:
         """
             Calculates the given statistics for the given data group.
@@ -406,7 +426,7 @@ class DataPreprocessor:
         """
 
         #calculate statistics
-        data = pd.Series(data)
+        data = pd.Series(data.flatten())
         
         if statistics_to_calculate == "mean":
             return np.mean(data, axis=0)

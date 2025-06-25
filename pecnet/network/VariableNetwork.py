@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from pecnet.models import *
+from pecnet.network.ModelLoader import train_or_load_model
 
 
 
@@ -96,25 +97,11 @@ class VariableNetwork():
         Returns:
             tuple: A tuple containing the predictions, errors, and compensated predictions from the current cascaded network.
         """
-        x = x.astype(np.float32)
-        y = y.astype(np.float32)
 
-        samp_size=x.shape[0]
-        input_seq_size=x.shape[1]
-        output_seq_size=y.shape[1]
+        model, cascad_pred = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
 
-        if self.mode=='train':
-
-            model=BasicNN(sample_size=samp_size,input_sequence_size=input_seq_size,output_sequence_size=output_seq_size)            
-            model.fit(x,y)
-            self.models.append(model)  # Store the trained model
-        
-        elif self.mode=='test':
-
-            model = self.models[self.__model_index]  # Get the model from the list
-            self.__model_index += 1                  # Increment the model index   
-        
-        cascad_pred=model.predict(x)    
+        if self.mode == 'test':
+            self.__model_index += 1
 
         if not self.__is_network_initialized:
             

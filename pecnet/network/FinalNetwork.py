@@ -1,5 +1,7 @@
 from pecnet.models import *
 from pecnet.preprocessing import DataPreprocessor
+from pecnet.network.ModelLoader import train_or_load_model
+
 
 class FinalNetwork:
     """
@@ -23,8 +25,10 @@ class FinalNetwork:
             switch_mode: Switches between 'train' and 'test' modes.
     """    
     def __init__(self, all_cascaded_predictions):
-        
-        self.model = None    # keeps the model instance
+
+        self.models = []  # keeps the final model instance
+        self.__final_predictions = None
+        self.__model_index=0
         self.mode = 'train'  # Default mode is train
 
         self.init_network(all_cascaded_predictions)    
@@ -33,8 +37,9 @@ class FinalNetwork:
         
         if all_cascaded_predictions.ndim!=2 :
             raise ValueError("Prediction values should be 2D array. Please reshape before proceeding.")
-        
-        
+
+        print("Mode: ", self.mode, " Final Network is working...")
+
         preds=self.__add_final_network(all_cascaded_predictions,DataPreprocessor().get_final_y_processed())
         self.__final_predictions=self.__generate_final_preds(preds)
              
@@ -52,22 +57,7 @@ class FinalNetwork:
         Returns:
             numpy.ndarray: An array containing the predictions from the final network.
         """
-        samp_size=x.shape[0]
-        input_seq_size=x.shape[1]
-        output_seq_size=y.shape[1]
-        
-        print("Mode: ",self.mode, " Final Network is working...")
-
-        if self.mode=='train':
-
-            model=BasicNN(sample_size=samp_size,input_sequence_size=input_seq_size,output_sequence_size=output_seq_size)            
-            model.fit(x,y)
-            self.model=model   # Store the trained model
-
-        elif self.mode=='test':
-            model = self.model       # Get the trained model 
-
-        preds=model.predict(x)
+        model, preds = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
     
         return preds
 

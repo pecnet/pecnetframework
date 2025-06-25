@@ -1,5 +1,6 @@
 from pecnet.models import *
 from pecnet.preprocessing import DataPreprocessor
+from pecnet.network.ModelLoader import train_or_load_model
 
 
 
@@ -43,7 +44,9 @@ class ErrorNetwork:
         error_X,error_Y,denormalization_term=DataPreprocessor().preprocess_errors(error_band) 
 
         #shifting last_compensated predictions 1 step back in time and trimming first window 
-        last_compensated_preds=last_compensated_preds[DataPreprocessor().get_error_sequence_size()+1:]  
+        last_compensated_preds=last_compensated_preds[DataPreprocessor().get_error_sequence_size()+1:]
+
+        print("Mode: ", self.mode, " Error Network is working...")
 
         # error predictions of error network, errors of errors, compensated error predictions  
         self.__error_predictions,self.__target_values,self.__compensated_error_predictions=self.__add_error_network(error_X, error_Y,denormalization_term,last_compensated_preds)
@@ -71,24 +74,12 @@ class ErrorNetwork:
             3. Error Correction Computation: Calculates the error predictions, errors of errors and compensated error predictions.
               
         """
-        samp_size=x.shape[0]
-        input_seq_size=x.shape[1]
-        output_seq_size=y.shape[1]
 
-        print("Mode: ", self.mode," Error Network is working...")
+        model, err_preds = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
 
-        if self.mode=='train':
+        if self.mode == 'test':
+            self.__model_index += 1
 
-            model=BasicNN(sample_size=samp_size,input_sequence_size=input_seq_size,output_sequence_size=output_seq_size)            
-            model.fit(x,y)
-            self.models.append(model)  # Store the trained model
-        
-        elif self.mode=='test':
-            model = self.models[self.__model_index]  # Get the model from the list
-            self.__model_index += 1                  # Increment the model index   
-
-        #TODO:Test if error normalization and denormalization work
-        err_preds=model.predict(x)#+error_denormalizer
         err_comp_preds=compensated_preds-err_preds
         err_error=err_preds-y
 
