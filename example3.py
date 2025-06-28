@@ -2,8 +2,6 @@ from pecnet.utils import Utility
 from pecnet.preprocessing import *
 from pecnet.network import PecnetBuilder
 
-import pandas as pd
-
 # Load data
 df = pd.read_csv("pecnet/example_datasets/5G_ProcessedData.csv")
 
@@ -15,7 +13,7 @@ columns_to_process = [
     'NR_Scan_SSB_RSRP_SortedBy_RSRP_diff_0_1_Scanner'
 ]
 
-target_column = 'Northing'
+target_column = 'Easting'
 
 if __name__ == '__main__':
 
@@ -24,10 +22,10 @@ if __name__ == '__main__':
 
     target_series = np.array(df[target_column].dropna().values)
 
-    # Preprocess target first → this will define DataPreprocessor().target_*
+    # Preprocess target first → this will define first network
     X_train_0, X_test_0, y_train, y_test = DataPreprocessor().preprocess(
         data=target_series,
-        sampling_periods=[1, 2,3],
+        sampling_periods=[1, 2, 3],
         sampling_statistics=["mean", "std"],
         sequence_size=4,
         error_sequence_size=8,
@@ -42,8 +40,8 @@ if __name__ == '__main__':
     preprocessed_inputs_test.append(X_test_0)
 
     for col in columns_to_process:
-        series = np.array(df[col].dropna().values)
 
+        series = np.array(df[col].dropna().values)
         X_train, X_test, _, _ = DataPreprocessor().preprocess(
             data=series,
             sampling_periods=[1,2,3],
@@ -60,6 +58,9 @@ if __name__ == '__main__':
 
         preprocessed_inputs_train.append(X_train)
         preprocessed_inputs_test.append(X_test)
+
+    # Set seed
+    Utility.set_seed(42)
 
     # Set hyperparameters
     Utility.set_hyperparameters(
@@ -87,13 +88,13 @@ if __name__ == '__main__':
     preds = pecnet.predict(*preprocessed_inputs_test, test_target=y_test)
 
     # Tomorrow's prediction
-    print("Last northing pred. coord: ", preds[-1])
+    print("Last easting pred. coord: ", preds[-1])
 
     # Evaluate
     result = pecnet.evaluate(preds, target_series)
     print(result)
 
-    # Optional: plot (if you want to visualize)
+    # plotting the results
     Utility.plot(
         list(range(len(target_series))),
         target_series,

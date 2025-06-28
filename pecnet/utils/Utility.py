@@ -76,7 +76,7 @@ class Utility:
 
         # Trimming the datasets to the same length w.rt. predictions
         min_length = min(len(dataset) for dataset in datasets)
-        timestamps = pd.to_datetime(timestamps[-min_length:])
+        timestamps = pd.to_datetime(timestamps[-min_length:],dayfirst=True)
         datasets = [dataset[-min_length:] for dataset in datasets]
 
         font = {'family': 'serif',

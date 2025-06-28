@@ -28,10 +28,15 @@ if __name__=='__main__':
                                                                 error_sequence_size=8,
                                                                 wavelet_type="haar",
                                                                 scale_factor=1.3, #1.2 etc.
-                                                                normalization_type=None, #standard,minmax etc.
+                                                                input_normalization_type=None, #standard,minmax etc.
+                                                                target_normalization_type="window_mean",
                                                                 conjoincy=True,
                                                                 test_ratio=0.05)
-    #sets hyperparameters for pecnet framework
+
+    # set seed for all components for reproducibility
+    Utility.set_seed(42)
+
+    #sets hyperparameters for pecnet framework, two way : manual or heuristic
 
     #Utility.set_hyperparameters(heuristic=True)
     #heuristic=True  means that
@@ -56,10 +61,8 @@ if __name__=='__main__':
                                 .add_final_network()
                                 .build())
 
-
     #predictions for test set
-
-    preds= pecnet.predict(X_test, y_test)
+    preds= pecnet.predict(X_test, test_target=y_test)
 
     #tomorrow's prediction
     print("Tomorrow's prediction: ",preds[-1])
