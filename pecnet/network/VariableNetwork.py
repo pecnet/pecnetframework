@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 from pecnet.models import *
 from pecnet.network.ModelLoader import train_or_load_model
 
-
-
 class VariableNetwork():
 
     """
@@ -40,46 +38,49 @@ class VariableNetwork():
         get_predictions: Returns all predictions from the cascaded networks inside Variable Network.
         get_Last_target_values: Returns the last set of target values (errors) for next network.
         switch_mode: Switches between 'train' and 'test' modes.
-    """    
+    """
 
-    def __init__(self, X_bands,y_band):
-        
+
+    def __init__(self, X_bands,y_band, is_primary_network=False, pre_comp_preds=[]):
+        self.__is_primary_network = is_primary_network        # is it first(root-level) nn or not?
+        self.__is_hierarchy_started = not is_primary_network  # is any (first) cascaded network initialized yet?
         self.models = []     # List to store model instances
         self.mode = 'train'  # Default mode is train
+        self.__model_index = 0 # index of the models in current Variable Network
 
-        self.init_network(X_bands, y_band)
+        self.init_network(X_bands, y_band, pre_comp_preds)
 
-    def init_network(self, X_bands, y_band):
+    def init_network(self, X_bands, y_band, pre_comp_preds=[]):
 
         if X_bands.ndim!=4 or y_band.ndim!=2:
             raise ValueError("x should be 4D array, y should be 2D array. Please reshape them before proceeding.")
 
-        data_length,frequencies,statistics,sequences=X_bands.shape      
-        
-        self.__model_index=0                   # index of the model in the cascaded network
-        self.__is_network_initialized=False    # is any cascaded network initialized yet?
+        data_length,frequencies,statistics,sequences=X_bands.shape
+
         self.__predictions=[]                  # predictions at Index 0 are target value predictions, others are error predictions
-        self.__target_values=[]                # labeled data and train errors of each cascaded network.Index 0 will keep actual data.Others will be errors.
+        self.__target_values=[]                # labeled data and train errors of each cascaded network.Index 0 will keep actual data.Others will be the errors.
         self.__compensated_predictions=[]      # compensated predictions after each cascaded network
 
+        self.__model_index = 0
         self.__target_values.append(y_band)
+        self.__compensated_predictions.append(pre_comp_preds)
 
         for frequency in range(frequencies):
             for statistic in range(statistics):
-                
+
                 cascad_data_x=X_bands[:,frequency,statistic,:]
-                
+
                 if np.all(cascad_data_x == 0): # all values will be 0 for frequency=1 and statistic="std"
-                    continue; 
+                    continue;
 
                 print("Mode: ", self.mode, " Cascaded Neural Network for frequency {} and statistic {} is working...".format(frequency,statistic))
 
                 preds,errors,compensated_preds=self.__add_cascaded_network(cascad_data_x,self.__target_values[-1])
-                
+
                 self.__predictions.append(preds)
                 self.__target_values.append(errors)
                 self.__compensated_predictions.append(compensated_preds)
-        
+
                 
     def __add_cascaded_network(self, x,y): # x,y are 2D numpy arrays.
         """
@@ -99,21 +100,24 @@ class VariableNetwork():
         """
 
         model, cascad_pred = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
+        self.__model_index += 1
 
-        if self.mode == 'test':
-            self.__model_index += 1
-
-        if not self.__is_network_initialized:
+        if not self.__is_hierarchy_started:
             
             cascad_comp_pred=cascad_pred
-            cascad_err=cascad_pred-y
-            self.__is_network_initialized=True
 
+            if self.mode == 'train':
+                cascad_err = cascad_pred - y
+            elif self.mode == 'test':
+                cascad_err = np.zeros_like(cascad_pred) # there is no error in test mode.
+            else:
+                raise ValueError("Unknown mode '{}'".format(self.mode))
+
+            self.__is_hierarchy_started=True
             return cascad_pred,cascad_err,cascad_comp_pred      
     
         cascad_comp_pred=self.__compensated_predictions[-1]-cascad_pred
-        cascad_err=cascad_pred-self.__target_values[-1]
-
+        cascad_err = cascad_pred - self.__target_values[-1] if self.mode == 'train' else np.zeros_like(cascad_pred)
 
         return cascad_pred,cascad_err,cascad_comp_pred
 
@@ -140,7 +144,8 @@ class VariableNetwork():
         """
         Returns last error target values (errors of errors) for next variable network with escaping error network.
         """
-        return self.__target_values[-1]                                       
-    
+        return self.__target_values[-1]
+
     def switch_mode(self,mode):
         self.mode=mode
+        self.__is_hierarchy_started = not self.__is_primary_network

@@ -1,6 +1,6 @@
-from pecnet.models import *
 from pecnet.preprocessing import DataPreprocessor
 from pecnet.network.ModelLoader import train_or_load_model
+from pecnet.network import ErrorNetwork
 
 
 class FinalNetwork:
@@ -9,7 +9,7 @@ class FinalNetwork:
 
         This class represents a Final Network, which is used in the last stage of a predictive modeling pipeline.
         Its main function is to take all cascaded predictions and generate a final, unified prediction. The class
-        supports both training and testing modes.
+        supports working with both training and testing modes.
 
         Attributes:
             model (BasicNN): stores the pre-trained neural network model.
@@ -71,7 +71,7 @@ class FinalNetwork:
         denormalization_term= DataPreprocessor().get_final_denormalization_term()
 
         if self.mode=='test':
-            denormalization_term[-1]=DataPreprocessor().generate_final_normalization_term_for_last_pred_element()
+            denormalization_term[-1]=DataPreprocessor().generate_final_denormalization_term_for_last_pred_element()
             
         denormalized_preds=preds+denormalization_term
 

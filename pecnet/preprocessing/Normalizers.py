@@ -151,15 +151,15 @@ class Scaler:
         
 if __name__=="__main__":
 
-    # data=np.array([[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12]])
+    data=np.array([[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],[8,9],[9,10],[10,11],[11,12]])
     # print(data.shape)
     wn = WindowNormalizer()
-    # wn.fit(data)
+    data=wn.fit_transform(data)
     # print(wn.transform(data))
     # print(data.shape)
-    
+    print (data)
     # scaler = Scaler()
     # print(scaler.scale1D(np.array([1,2,3,4,5,6,7,8,9,10])))
 
-    nd,np= wn.normalize_with_prewindow([1,2,3,4,5,6,7,8,9,10], 4,1)
-    print(nd)
+    #nd,np= wn.normalize_with_prewindow([1,2,3,4,5,6,7,8,9,10], 4,1)
+    #print(nd)

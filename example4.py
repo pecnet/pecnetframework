@@ -91,7 +91,7 @@ if __name__ == '__main__':
         pecnet.add_variable_network(candidate_X_train[idx], y_train if initial_network_setting else target_reference)
         print(f"Added feature: {total_columns[idx]} | corr: {selector.get_last_corr_score():.3f}")
 
-        target_reference = pecnet.pecnet.get_next_variable_network_target_values()
+        target_reference = pecnet.pecnet.get_target_values_for_current_variable_network()
         initial_network_setting = False
 
     # Add ErrorNetwork and FinalNetwork

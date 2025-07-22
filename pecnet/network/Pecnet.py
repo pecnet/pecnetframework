@@ -20,7 +20,7 @@ class Pecnet:
         """
         self.variable_networks.append(variable_network)
 
-    def get_next_variable_network_target_values(self,varnet_index=None):
+    def get_target_values_for_current_variable_network(self,varnet_index=None):
         """
         Retrieves the last target values from the most recently added variable network.
         This is used as the target values for the next variable network when y_train is not provided.
@@ -37,9 +37,30 @@ class Pecnet:
         if self.mode == "train":
             return self.variable_networks[-1].get_Last_target_values()
         elif self.mode == "test":
-            if varnet_index is None:
-                raise ValueError("Variable Network index must be set correctly in test mode.")
-            return self.variable_networks[varnet_index].get_Last_target_values()
+            if varnet_index is None or varnet_index == 0:
+                raise ValueError("Variable Network index must be set correctly and must be > 0.")
+            return self.variable_networks[varnet_index-1].get_Last_target_values()
+        else:
+            raise ValueError("Invalid mode. Choose from 'train' or 'test'.")
+
+    def get_comp_preds_for_current_variable_network(self, varnet_index=None):
+        """
+        Retrieves the last compensated predictions from the previous VariableNetwork.
+        Args:
+            varnet_index (int, optional): Index of the current VariableNetwork to process compensated predictions.
+        Returns:
+            np.ndarray: Previous compensated predictions to retrieve for current VariableNetwork .
+        """
+        if not self.variable_networks:
+            raise ValueError(
+                "No variable networks found. Add at least one variable network before calling this method.")
+
+        if self.mode == "train":
+            return self.variable_networks[-1].get_last_compensated_predictions()
+        elif self.mode == "test":
+            if varnet_index is None or varnet_index == 0:
+                raise ValueError("Variable Network index must be set correctly and must be > 0.")
+            return self.variable_networks[varnet_index-1].get_last_compensated_predictions()
         else:
             raise ValueError("Invalid mode. Choose from 'train' or 'test'.")
 
@@ -98,8 +119,13 @@ class Pecnet:
 
         #predicts test_target using hierarchical networks fed with multivariate data
         for i, varnet in enumerate(self.variable_networks):
-            varnet.init_network(test_inputs[i], test_target) if i == 0 else (
-                varnet.init_network(test_inputs[i],self.get_next_variable_network_target_values(i-1))) #gets target from last network.
+
+            if i == 0:
+                varnet.init_network(test_inputs[i], test_target)
+            else:
+                y_target = self.get_target_values_for_current_variable_network(i)
+                pre_comp = self.get_comp_preds_for_current_variable_network(i)
+                varnet.init_network(test_inputs[i], y_target, pre_comp)
 
         self.error_network.init_network(self.get_shifted_compensated_errors(),self.get_last_compensated_predictions())
         self.final_network.init_network(self.get_all_preds())

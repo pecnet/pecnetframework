@@ -2,6 +2,7 @@ from typing import List, Any
 from copy import deepcopy
 from numpy import ndarray, dtype
 from numpy.lib.stride_tricks import sliding_window_view
+from numpy.lib.stride_tricks import as_strided
 from pywt import wavedec
 import pandas as pd
 from pecnet.preprocessing.Normalizers import *
@@ -43,6 +44,7 @@ class DataPreprocessor:
     def preprocess(self,
                    data: np.ndarray, 
                    sampling_periods:List[int] = None,
+                   stride : int = None,
                    sampling_statistics:List[str] = None,
                    sequence_size:int = 4, 
                    error_sequence_size:int = 4, 
@@ -60,6 +62,7 @@ class DataPreprocessor:
             Args:
                 data (np.ndarray): The data to be processed, as a NumPy array.
                 sampling_periods (List[int], optional): List of sampling periods. Defaults to [1, 4].
+                stride (int): sequence jump size while downsampling.
                 sampling_statistics (List[str], optional): List of sampling statistics to be calculated, like 'mean'. Defaults to ["mean"].
                 sequence_size (int, optional): The size of the sequence for processing. Defaults to 4.
                 error_sequence_size (int, optional): The size of the sequence for error network. Defaults to 4.
@@ -105,8 +108,8 @@ class DataPreprocessor:
 
         #scaling and normalization options
         split_index=int(test_ratio*(len(data[:-required_timestamps])-1)) #"required timestamps" for windowization, "-1" for y.
-        train_part = data[:split_index]
-        test_part = data[split_index:]
+        train_part = data[:-split_index]
+        test_part = data[-split_index:]
 
         #scale the data before processing
         if scale_factor is not None:
@@ -145,7 +148,8 @@ class DataPreprocessor:
             sequences= self._build_sequences(data, 
                                          sorted_sampling_periods, 
                                          sampling_statistics, 
-                                         sequence_size, 
+                                         sequence_size,
+                                         stride,
                                          wavelet_type, 
                                          required_timestamps)
 
@@ -176,7 +180,7 @@ class DataPreprocessor:
         if self.target_denormalization_term is None:
             self.target_denormalization_term = self.__y_denormalization_term.copy()
 
-        X=np.asarray(sequences[:len(self.target)]) #includes tomorrow prediction as placeholder for now
+        X=np.asarray(sequences[:len(self.target)]) #includes tomorrow prediction as placeholder
 
         #split train and test data
         self.__test_size_index=int(len(X)*test_ratio) #TODO: there is also split_index, make it one variable
@@ -187,7 +191,7 @@ class DataPreprocessor:
 
     def preprocess_errors(self,errors: np.ndarray) -> List[np.ndarray]:
         """
-        Performs operations on error data:  windowization,normalization and wavelet transformation for error network
+        Performs operations on error data:  alignment, windowization,normalization and wavelet transformation for error network
 
         Args:
             errors (np.ndarray): Transferred compensated errors.
@@ -199,21 +203,22 @@ class DataPreprocessor:
         # windowization
         windowed_errors = self.build_windows(errors, window_length=self.__error_sequence_size) # window size is treated as sequence size in error network.
 
-        # normalized X,y errors and denormalization term
+        # normalized and wavelet transformed X
         X=windowed_errors[:-1]
-        y_errors=np.array(errors[self.__error_sequence_size:], dtype=np.float32).reshape(-1,1)
-        error_denormalization_term=np.array(y_errors[self.__error_sequence_size:],dtype=np.float32).reshape(-1,1)
-
-        # wavelet transform for X, return coeffs as numpy array
+        X=self.window_normalizer.fit_transform(X) # X will be training or test set not whole.So it is secure to do so.
         X_errors=np.apply_along_axis(self._calculate_dwt, 1, X.copy(),wavelet_type=self.__wavelet_type).astype(np.float32)
 
-        return X_errors,y_errors,error_denormalization_term
+        # y will be kept same as before
+        y_errors = np.array(errors[self.__error_sequence_size:], dtype=np.float32).reshape(-1, 1)
+
+        return X_errors,y_errors
 
     def _build_sequences(self,
                          data, 
                          sorted_sampling_periods, 
                          sampling_statistics, 
-                         sequence_size, 
+                         sequence_size,
+                         stride,
                          wavelet_type, 
                          max_window_size):
         """
@@ -233,7 +238,7 @@ class DataPreprocessor:
 
         # builds data windows w.r.t. window size
 
-        windowed_data = self.build_windows(data, window_length=max_window_size)
+        windowed_data = self.build_windows(data, window_length=max_window_size,stride=stride)
 
         # build sequences for each statistic with given periods and sequence size
 
@@ -310,7 +315,7 @@ class DataPreprocessor:
 
                 for i in range(0,len(sliding_windows)-sequence_size+1):
 
-                    #That case will be controlled in the variable network
+                    #That case below will be controlled in the variable network
                     # # if the statistics includes std, skip the last period (1-day) since it is a zero vector.
                     # if stat == "std" and period == 1:
                     #     continue
@@ -340,15 +345,16 @@ class DataPreprocessor:
         sequences=sequences.transpose(2, 0, 1, 3) #axes were adjusted same as build_windows method
         return sequences
 
-    def build_windows(self,values: Sequence[float], window_length: int) -> np.ndarray:
+    def build_windows(self,values: Sequence[float], window_length: int, stride: int = None) -> np.ndarray:
         """
-        Splits a 1D sequence into overlapping sliding windows of fixed length.
+        Splits a 1D sequence into overlapping or strided sliding windows of fixed length.
         Parameters
         ----------
         values : Sequence[float]
             1D input sequence (list, tuple, or np.ndarray).
         window_length : int
             Length of each sliding window.
+        stride (int, optional): Stride between windows. Defaults to 1 (fully overlapping).
 
         Returns
         -------
@@ -370,7 +376,18 @@ class DataPreprocessor:
 
         if len(values) < window_length:
             return np.empty((0, window_length))  # to keep shape adjusted
-        return sliding_window_view(values, window_length).reshape(-1, window_length)
+
+        if stride is None or stride == 1:
+            return sliding_window_view(values, window_length).reshape(-1, window_length)
+
+        # if stride>1 is given
+        n = (len(values) - window_length) // stride + 1
+        if n <= 0:
+            return np.empty((0, window_length))
+
+        return as_strided(values,
+                          shape=(n, window_length),
+                          strides=(values.strides[0] * stride, values.strides[0]))
 
     def _build_sampling_groups(self, windowed_data, sampling_period):
         """
@@ -394,12 +411,19 @@ class DataPreprocessor:
             data = data.reshape(-1, 1)
 
         groups = []
+        i = len(data)
+        use_ceil = True if isinstance(sampling_period, float) else False
 
         # Iterate backwards with stride = sampling_period
-        for i in range(len(data), 0, -sampling_period):
-            start_idx = max(i - sampling_period, 0)
+        while i > 0:
+            group_size = int(np.ceil(sampling_period)) if use_ceil else int(sampling_period)
+            start_idx = max(i - group_size, 0)
             group = data[start_idx:i]
             groups.append(group)
+
+            i -= group_size
+            if isinstance(sampling_period, float):
+                use_ceil = not use_ceil  # alternate between ceil and floor
 
         # Replace last group with remainder if needed
         remainder_size = len(data) % sampling_period
@@ -429,15 +453,15 @@ class DataPreprocessor:
         data = pd.Series(data.flatten())
         
         if statistics_to_calculate == "mean":
-            return np.mean(data, axis=0)
+            return np.nanmean(data, axis=0)
         elif statistics_to_calculate == "std":
-            return np.std(data, axis=0)
+            return np.nanstd(data, axis=0)
         elif statistics_to_calculate == "max":
-            return np.max(data, axis=0)
+            return np.nanmax(data, axis=0)
         elif statistics_to_calculate == "min":
-            return np.min(data, axis=0)
+            return np.nanmin(data, axis=0)
         elif statistics_to_calculate == "median":
-            return np.median(data, axis=0)
+            return np.nanmedian(data, axis=0)
         elif statistics_to_calculate == "mode":
             return data.mode()[0]
         elif statistics_to_calculate == "count":
@@ -492,7 +516,7 @@ class DataPreprocessor:
         else:  
             return self.target_denormalization_term[-self.__test_size_index+self.__error_sequence_size+1:]
    
-    def generate_final_normalization_term_for_last_pred_element(self):
+    def generate_final_denormalization_term_for_last_pred_element(self):
         
         raw_targets=self.target+self.target_denormalization_term
         norm_term=np.mean(raw_targets[-(self.__required_timestamps+self.__target_normalization_step_size):-self.__target_normalization_step_size].flatten())
@@ -501,3 +525,27 @@ class DataPreprocessor:
 
     def switch_mode(self,mode):
         self.mode=mode
+
+    def reset(self):
+        """Resets the state of the singleton instance to its initial values."""
+        print("DataPreprocessor Reset")
+        self.initialized = True
+        self.mode = "train"
+        self.scaler = Scaler()
+        self.normalizer = None
+        self.window_normalizer = WindowNormalizer()
+        self.mean_normalizer = MeanNormalizer()
+        self.__target_normalization_step_size = 1
+
+        self.__final_y_processed = None
+        self.__sequence_size = None
+        self.__error_sequence_size = None
+        self.__y_denormalization_term = None
+        self.__wavelet_type = None
+        self.__required_timestamps = None
+        self.__test_size_index = None
+
+        self.target = None
+        self.target_denormalization_term = None
+        self.target_scaler = None
+        self.target_normalizer = None

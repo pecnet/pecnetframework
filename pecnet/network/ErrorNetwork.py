@@ -1,6 +1,7 @@
 from pecnet.models import *
 from pecnet.preprocessing import DataPreprocessor
 from pecnet.network.ModelLoader import train_or_load_model
+from pecnet.network.VariableNetwork import VariableNetwork
 
 
 
@@ -25,12 +26,12 @@ class ErrorNetwork:
         get_target_values: Returns the errors of errors.
         switch_mode: Switches between 'train' and 'test' modes.
     """
-    
 
     def __init__(self, error_band,last_compensated_preds):
 
         self.models = []     # List to store model instances
         self.mode = 'train'  # Default mode is train
+        self.__model_index = 0 # index of the model in the error network
 
         self.init_network(error_band, last_compensated_preds)
 
@@ -39,9 +40,9 @@ class ErrorNetwork:
         if error_band.ndim!=2:
             raise ValueError("Error data should be 2D array. Please reshape it before proceeding.")
         
-        self.__model_index=0                   # index of the model in the cascaded network
+        self.__model_index=0
 
-        error_X,error_Y,denormalization_term=DataPreprocessor().preprocess_errors(error_band) 
+        error_X,error_Y=DataPreprocessor().preprocess_errors(error_band)
 
         #shifting last_compensated predictions 1 step back in time and trimming first window 
         last_compensated_preds=last_compensated_preds[DataPreprocessor().get_error_sequence_size()+1:]
@@ -49,17 +50,16 @@ class ErrorNetwork:
         print("Mode: ", self.mode, " Error Network is working...")
 
         # error predictions of error network, errors of errors, compensated error predictions  
-        self.__error_predictions,self.__target_values,self.__compensated_error_predictions=self.__add_error_network(error_X, error_Y,denormalization_term,last_compensated_preds)
+        self.__error_predictions,self.__target_values,self.__compensated_error_predictions=self.__add_error_network(error_X, error_Y,last_compensated_preds)
 
                 
-    def __add_error_network(self, x,y,error_denormalizer,compensated_preds): # x,y are 2D numpy arrays.  
+    def __add_error_network(self, x,y,compensated_preds): # x,y are 2D numpy arrays.
         """
         Adds error correction network to the PECNET model and performs the necessary train or test operation.
 
         Args:
             x (numpy.ndarray): The sequential error input data for the error network.
             y (numpy.ndarray): The error output data for the error network.
-            error_denormalizer (numpy.ndarray): The denormalization term for the error predictions.
             compensated_preds (numpy.ndarray): The compensated predictions from the previous layer.Theoretically, it will be sended to the next cascaded layer if added.
         
         Steps:
@@ -76,12 +76,14 @@ class ErrorNetwork:
         """
 
         model, err_preds = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
-
-        if self.mode == 'test':
-            self.__model_index += 1
+        self.__model_index += 1
 
         err_comp_preds=compensated_preds-err_preds
-        err_error=err_preds-y
+
+        if self.mode == 'train':
+            err_error = err_preds - y
+        else:
+            err_error = np.zeros_like(err_preds) # just a zero placeholder
 
         return err_preds,err_error,err_comp_preds
 

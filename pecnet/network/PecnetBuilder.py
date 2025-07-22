@@ -33,10 +33,16 @@ class PecnetBuilder:
             y_train: Training target data.
         """
 
-        if y_train is None:
-            y_train = self.pecnet.get_next_variable_network_target_values()
+        _is_primary_network = (len(self.pecnet.variable_networks) == 0)
+        _pre_comp_preds=[]
 
-        self.pecnet.add_variable_network(VariableNetwork(X_train,y_train))
+        if not _is_primary_network:
+            _pre_comp_preds = self.pecnet.get_last_compensated_predictions()
+
+        if y_train is None:
+            y_train = self.pecnet.get_target_values_for_current_variable_network()
+
+        self.pecnet.add_variable_network(VariableNetwork(X_train,y_train,_is_primary_network,_pre_comp_preds))
         return self
 
     def add_final_network(self):
