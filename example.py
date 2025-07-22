@@ -6,8 +6,7 @@ from pecnet.network import PecnetBuilder
 
 if __name__=='__main__':
 
-
-    #loads default example dataset and plots it, close the plot and go on
+    # loads default example dataset and plots it, close the plot and go on.
 
     aapl_timestamps,aapl_prices=Utility.load_apple_test_dataset()
 
@@ -20,9 +19,10 @@ if __name__=='__main__':
         tick_size=5,
         save_location=None)
 
+
     #preprocesses data and splits it into train and test sets
-    X_train, X_test, y_train, y_test=DataPreprocessor().preprocess(data=aapl_prices[-1460:], # last 4 years
-                                                                sampling_periods=[1,2,3],
+    X_train, X_test, y_train, y_test=DataPreprocessor().preprocess(data=aapl_prices, # last 5 years
+                                                                sampling_periods=[1,2,4],
                                                                 sampling_statistics=["mean","std"],
                                                                 sequence_size=4,
                                                                 error_sequence_size=8,
@@ -50,9 +50,9 @@ if __name__=='__main__':
     # or you can set hyperparameters manually by using Utility.set_hyperparameters() like below.
 
     Utility.set_hyperparameters(learning_rate=0.001,
-                                epoch_size=500,
-                                batch_size=96,
-                                hidden_units_sizes=[16,8])
+                                epoch_size=1000,
+                                batch_size=192,
+                                hidden_units_sizes=[8,16,8])
 
     #acts like fit() method
 
