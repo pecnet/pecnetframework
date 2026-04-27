@@ -44,10 +44,10 @@ class ErrorNetwork:
 
         error_X,error_Y=DataPreprocessor().preprocess_errors(error_band)
 
-        #shifting last_compensated predictions 1 step back in time and trimming first window 
-        last_compensated_preds=last_compensated_preds[DataPreprocessor().get_error_sequence_size()+1:]
+        #trimming first window
+        last_compensated_preds=last_compensated_preds[DataPreprocessor().get_error_sequence_size():]
 
-        print("Mode: ", self.mode, " Error Network is working...")
+        print("Mode: ", self.mode, " Error Network is working...\n")
 
         # error predictions of error network, errors of errors, compensated error predictions  
         self.__error_predictions,self.__target_values,self.__compensated_error_predictions=self.__add_error_network(error_X, error_Y,last_compensated_preds)
@@ -75,7 +75,7 @@ class ErrorNetwork:
               
         """
 
-        model, err_preds = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
+        model, err_preds = train_or_load_model(x, y, self.mode, self.models, self.__model_index, network_name="ErrorNetwork")
         self.__model_index += 1
 
         err_comp_preds=compensated_preds-err_preds

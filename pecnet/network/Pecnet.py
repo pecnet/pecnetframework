@@ -10,6 +10,7 @@ class Pecnet:
         self.final_network = None
         self.error_network = None
         self.variable_networks = []
+        DataPreprocessor().switch_mode("train")
 
     def add_variable_network(self, variable_network):
         """
@@ -69,9 +70,9 @@ class Pecnet:
         Adjusts timestamps of compensated errors to be used in error network.
         
         Returns: 
-            List[float] : Errors shifted 1 step back in time.
+            List[float] : Errors aligned in time w.r.t other inputs Final Network.
         """
-        return self.variable_networks[-1].get_compensated_errors()[:-1]
+        return self.variable_networks[-1].get_compensated_errors()
     
     def get_last_compensated_predictions(self):
         """
@@ -87,8 +88,8 @@ class Pecnet:
         Returns: 
             List[List] : All predictions in pipeline.
         """
-        #cascade predictions will be trimmed for final network,1 for time shifting, others for error sequence size 
-        adjust_size=DataPreprocessor().get_error_sequence_size()+1
+        #cascade predictions will be trimmed as much as error sequence for final network
+        adjust_size=DataPreprocessor().get_error_sequence_size()
         adjusted_preds = []
 
         for varnet in self.variable_networks:
@@ -160,7 +161,7 @@ class Pecnet:
         # calculate mae
         mae = mean_absolute_error(y, pred)
         
-        return f"RMSE: {round(rmse,3)} R2 : {round(r2,3)},MAE: {round(mae,3)}, MAPE: {round(mape,3)}"
+        return f"RMSE: {round(rmse,3)}, R2 : {round(r2,3)},MAE: {round(mae,3)}, MAPE: {round(mape,3)}"
 
     def switch_mode(self, mode):
         """

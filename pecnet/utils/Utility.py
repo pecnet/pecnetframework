@@ -28,7 +28,7 @@ class Utility:
         torch.backends.cudnn.benchmark = False
 
     @staticmethod
-    def set_hyperparameters(heuristic=False,learning_rate=0.001,epoch_size=1000,batch_size=32,hidden_units_sizes=[32,16]):
+    def set_hyperparameters(heuristic=False, learning_rate=0.001, use_scheduler=False, use_dropout=False,dropout_rate=0.1, epoch_size=1000,batch_size=32,hidden_units_sizes=[32,16]):
         """
         Sets hyperparameters for pecnet framework.
         if you just set heuristic=True, that means:
@@ -42,6 +42,9 @@ class Utility:
         """
         Utility.heuristic=heuristic
         Utility.learning_rate=learning_rate
+        Utility.use_scheduler=use_scheduler
+        Utility.use_dropout = use_dropout
+        Utility.dropout_rate = dropout_rate
         Utility.epoch_size=epoch_size
         Utility.batch_size=batch_size
         Utility.hidden_units_sizes=hidden_units_sizes

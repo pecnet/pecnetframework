@@ -8,6 +8,8 @@ import torch.nn.init as initializers   # initialization module
 import numpy as np
 import matplotlib.pyplot as plt   # for plotting
 import seaborn as sns   # for plotting
+from pathlib import Path
+from datetime import datetime
 
 from pecnet.utils import Utility
 
@@ -42,11 +44,13 @@ class BasicNN(nn.Module):
         predict: Makes predictions on new data.
     """
 
-    def __init__(self,sample_size,input_sequence_size,output_sequence_size):
+    def __init__(self,sample_size,input_sequence_size,output_sequence_size,network_name="Network"):
         
         super().__init__()
 
         self.device = None
+        self.network_name = network_name  # Added for logging and plotting purposes
+        self.loss_log = []  # For loss plotting
 
         self.init_hyperparameters(sample_size,input_sequence_size,output_sequence_size)
         self.init_model()
@@ -61,7 +65,10 @@ class BasicNN(nn.Module):
             self.learning_rate = 0.01
             self.epoch_size = 300
             self.batch_size = int(np.sqrt(sample_size)) #The heuristic batch size parameter
-            
+            self.use_scheduler = False
+            self.use_dropout = False
+            self.dropout_rate =0
+
             h1_hidden_units_size =int((2*input_sequence_size/3)+output_sequence_size) #The number of hidden neurons should be 2/3 the size of the input layer, plus the size of the output layer.
             h2_hidden_units_size =int(sample_size/(8*(input_sequence_size+output_sequence_size)))-h1_hidden_units_size #A kind of heuristic formula and 8 is a scale factor, which can be changed.     
             self.hidden_layer_units_sizes = [h1_hidden_units_size,h2_hidden_units_size] #There is currently no theoretical reason to use neural networks with any more than two hidden layers
@@ -70,6 +77,9 @@ class BasicNN(nn.Module):
             self.epoch_size = Utility.epoch_size
             self.batch_size = Utility.batch_size
             self.hidden_layer_units_sizes = Utility.hidden_units_sizes
+            self.use_scheduler = Utility.use_scheduler
+            self.use_dropout = Utility.use_dropout
+            self.dropout_rate = Utility.dropout_rate
 
     def init_model(self):
 
@@ -86,8 +96,11 @@ class BasicNN(nn.Module):
         layers.append(nn.Linear(self.hidden_layer_units_sizes[-1], self.output_sequence_size))
         initializers.kaiming_normal_(layers[-1].weight)
 
+        self.norm = nn.LayerNorm(self.hidden_layer_units_sizes[-1])
+        self.dropout = nn.Dropout(self.dropout_rate) if self.use_dropout else nn.Identity()
+
         self.layers = nn.ModuleList(layers)
-        self.optimizer= Adam(self.parameters(), self.learning_rate)
+        self.optimizer= Adam(self.parameters(), self.learning_rate, weight_decay=1e-5)
 
     def init_devices(self):
 
@@ -97,16 +110,18 @@ class BasicNN(nn.Module):
             self.device = torch.device("cpu")
         
         self.to(self.device)
-        
 
-        
     def forward(self, x):
 
-        for layer in self.layers[:-1]:
+        for layer in self.layers[:-2]:
             x = F.gelu(layer(x))
-        
-        # Apply the last layer without an activation function
+            x = self.dropout(x)
+
+        # layer normalizaton before output layer
+        x = F.gelu(self.norm(self.layers[-2](x)))
+
         x = self.layers[-1](x)
+
         return x
 
     def loss(self, predicted, target):
@@ -119,29 +134,55 @@ class BasicNN(nn.Module):
         dataset = TensorDataset(input_tensor, output_tensor)
         train_loader=DataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)
 
-        for epoch in range(self.epoch_size):
+        if self.use_scheduler:
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                self.optimizer,
+                max_lr=self.learning_rate,
+                epochs=self.epoch_size,
+                steps_per_epoch=len(train_loader)
+            )
+        else:
+            scheduler = None
 
-            total_loss = 0.0  
+        log_dir = Path(__file__).resolve().parent.parent / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
 
-            for inputs, targets in train_loader:
-                
-                inputs, targets = inputs.to(self.device), targets.to(self.device) 
-                predict = self.forward(inputs)
-                loss = self.loss(predict, targets)
-                loss.backward()
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_filename = log_dir / f"{timestamp}_log.txt"
 
-                self.optimizer.step()
-                self.optimizer.zero_grad()
-  
-                total_loss += loss.item() * inputs.size(0)
+        with open(log_filename, "w") as f:
 
-            epoch_loss = total_loss / len(dataset)
-            print(f"Epoch {epoch + 1}/{self.epoch_size}, Avg. Loss per Sample: {epoch_loss:.5f}")
+            for epoch in range(self.epoch_size):
+                total_loss = 0.0
+                for inputs, targets in train_loader:
 
-            if total_loss<self.learning_rate/100:
-                print(f"Stopping early at epoch {epoch+1} due to reaching threshold loss.")
-                break
-        
+                    inputs, targets = inputs.to(self.device), targets.to(self.device)
+                    predict = self.forward(inputs)
+                    loss = self.loss(predict, targets)
+                    loss.backward()
+
+                    self.optimizer.step()
+                    if scheduler:
+                        scheduler.step()
+                    self.optimizer.zero_grad()
+
+                    total_loss += loss.item() * inputs.size(0)
+
+                epoch_loss = total_loss / len(dataset)
+                self.loss_log.append(epoch_loss)
+
+                if epoch % 10 == 0 or epoch == self.epoch_size - 1:
+                    msg = f"[{self.network_name}] Epoch {epoch + 1}/{self.epoch_size} | Loss: {epoch_loss:.6f}\n"
+                    print(msg.strip())
+                    f.write(msg)
+
+                if total_loss<self.learning_rate/10:
+                    print(f"Stopping early at epoch {epoch+1} due to reaching threshold loss.")
+                    break
+
+        plot_path = log_dir / f"{self.network_name}_lossplot.png"
+        self.plot_loss_curve(plot_path)
+
     def predict(self, X):
         
         self.eval()  # Set the model to evaluation mode
@@ -150,6 +191,19 @@ class BasicNN(nn.Module):
             inputs = torch.tensor(X, dtype=torch.float32, device=self.device)
             predictions = self(inputs)
             return predictions.detach().cpu().numpy()
+
+    def plot_loss_curve(self, save_path):
+        sns.set_theme(style="whitegrid")
+        plt.figure(figsize=(10, 5))
+        plt.plot(range(1, len(self.loss_log) + 1), self.loss_log, label="Training Loss", linewidth=2.5)
+        plt.xlabel("Epoch", fontsize=14)
+        plt.ylabel("Loss", fontsize=14)
+        plt.title(f"Training Loss Curve ({self.network_name})", fontsize=16)
+        plt.legend(fontsize=12)
+        plt.tight_layout()
+        plt.savefig(str(save_path), dpi=300)
+        plt.close()
+        print(f"\nLoss curve saved to {save_path}\n")
 
 
 if __name__ == "__main__":
@@ -161,8 +215,9 @@ if __name__ == "__main__":
     input_sequence_size=1
     output_sequence_size=1
 
+    Utility.set_seed(42)
     Utility.set_hyperparameters(learning_rate=0.001,
-                                epoch_size=300,
+                                epoch_size=400,
                                 batch_size=96,
                                 hidden_units_sizes=[16,32,16,8])
 

@@ -40,7 +40,7 @@ if __name__ == '__main__':
                                                                 error_sequence_size=8,
                                                                 wavelet_type="haar",
                                                                 scale_factor=1.3, #1.2 etc.
-                                                                input_normalization_type=None, #standard,minmax etc.
+                                                                normalization_type=None, #standard,minmax etc.
                                                                 target_normalization_type="window_mean",
                                                                 conjoincy=False,
                                                                 test_ratio=0.05)
@@ -53,7 +53,7 @@ if __name__ == '__main__':
                                                                 error_sequence_size=8,
                                                                 wavelet_type="haar",
                                                                 scale_factor=1.3, #1.2 etc.
-                                                                input_normalization_type=None, #standard,minmax etc.
+                                                                normalization_type=None, #standard,minmax etc.
                                                                 target_normalization_type="window_mean", #window_mean, ema etc.
                                                                 conjoincy=False,
                                                                 test_ratio=0.05)

@@ -1,6 +1,6 @@
 from pecnet.models import BasicNN
 
-def train_or_load_model(x, y, mode, model_list=None, model_index=0):
+def train_or_load_model(x, y, mode, model_list=None, model_index=0,network_name="Network"):
     """
     Trains or loads a Machine Learning model and returns the predictions.
 
@@ -21,7 +21,7 @@ def train_or_load_model(x, y, mode, model_list=None, model_index=0):
     output_sequence_size = y.shape[1]
 
     if mode == 'train':
-        model = BasicNN(sample_size, input_sequence_size, output_sequence_size)
+        model = BasicNN(sample_size, input_sequence_size, output_sequence_size,network_name=network_name)
         model.fit(x, y)
         if model_list is not None:
             model_list.append(model)

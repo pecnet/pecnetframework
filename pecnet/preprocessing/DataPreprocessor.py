@@ -41,6 +41,8 @@ class DataPreprocessor:
             self.target_scaler = None
             self.target_normalizer = None
 
+            self._profiles = {}
+
     def preprocess(self,
                    data: np.ndarray, 
                    sampling_periods:List[int] = None,
@@ -50,10 +52,13 @@ class DataPreprocessor:
                    error_sequence_size:int = 4, 
                    wavelet_type:str ="haar",
                    scale_factor=None,
-                   input_normalization_type=None,
+                   normalization_type=None,
                    target_normalization_type="window_mean",
                    conjoincy=False,
-                   test_ratio:float = 0.2
+                   test_ratio:float = 0.2,
+                   *,
+                   profile: str = "default",
+                   fit: bool = False,
                    ) -> tuple[
         ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]], ndarray[Any, dtype[Any]]]:
         """
@@ -68,7 +73,7 @@ class DataPreprocessor:
                 error_sequence_size (int, optional): The size of the sequence for error network. Defaults to 4.
                 wavelet_type (str, optional): Type of the wavelet to be used. Defaults to "haar".
                 scale_factor (float, optional): Scaling factor. Defaults to None.
-                input_normalization_type (str, optional): Input normalization type like min-max, standard. Defaults to None.
+                normalization_type (str, optional): Normalization type like min-max, standard. Defaults to None.
                 target_normalization_type (str, optional): Target normalization type like window-mean, ema. Defaults to window-mean.
                 conjoincy (bool, optional): Conjunct or not. Defaults to False. It defines the way of divide-slide operation on the data.
                 test_ratio (float, optional): The ratio of the test data. Defaults to 0.2.
@@ -77,60 +82,101 @@ class DataPreprocessor:
                 Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: A tuple of NumPy arrays containing the processed data for training or test.
         """
 
-        #assings default values for mutable variables
+        #assignigs default values for mutable variables
         sampling_periods = sampling_periods or [1, 4]
         sampling_statistics = sampling_statistics or ["mean"]
-
-        #set sequence and error sequence size to process later
-        self.__error_sequence_size=error_sequence_size
-        self.__sequence_size=sequence_size
-        
-        #set wavelet type 
-        self.__wavelet_type=wavelet_type
+        stride_val = stride if stride and stride > 1 else 1
 
         #check if data is sufficient for processing
         sorted_sampling_periods=np.sort(sampling_periods)[::-1].tolist()
         biggest_period=max(sampling_periods)
-
-        if conjoincy:
-            required_timestamps=biggest_period+sequence_size-1
-        else:
-            required_timestamps=biggest_period*sequence_size
-
-        self.__required_timestamps=required_timestamps
+        required_timestamps = (biggest_period + sequence_size - 1) if conjoincy else (biggest_period * sequence_size)
 
         if len(data)<required_timestamps:
             raise ValueError("Not enough data for processing. At least {} timestamps are required.".format(required_timestamps))
 
         if not (0 < test_ratio < 1):
             raise ValueError("Test ratio must be between 0 and 1.")
-        
 
-        #scaling and normalization options
-        split_index=int(test_ratio*(len(data[:-required_timestamps])-1)) #"required timestamps" for windowization, "-1" for y.
-        train_part = data[:-split_index]
-        test_part = data[-split_index:]
+        use_profile = (profile in self._profiles) and (fit is False)
+
+        if use_profile:
+            self.reset_transient()
+            pf = self._profiles[profile]
+            wavelet_type = pf.get("wavelet_type", wavelet_type)
+            sequence_size = pf.get("sequence_size", sequence_size)
+            error_sequence_size = pf.get("error_sequence_size", error_sequence_size)
+            stride_val = pf.get("stride", stride_val)
+            required_timestamps = pf.get("required_timestamps", required_timestamps)
+            conjoincy = pf.get("conjoincy", conjoincy)
+            target_normalization_type = pf.get("target_normalization_type", target_normalization_type)
+
+        #set sequence, error sequence size and wavelet type to process later
+        self.__error_sequence_size=error_sequence_size
+        self.__sequence_size=sequence_size
+        self.__wavelet_type=wavelet_type
+        self.__required_timestamps=required_timestamps
+
+        # split
+        if self.target is None:
+            data_trimmed = len(data) - required_timestamps + stride_val    # "required timestamps" for windowization, +1 or stride for adjustment.
+            self.__test_size_index = int(test_ratio * (data_trimmed /stride_val))
+        else :
+            self.__test_size_index = int(test_ratio * (len(data[:len(self.target)])))
+
+        split_idx = self.__test_size_index * stride_val
+        train_part = data[:-split_idx]
+        test_part = data[-split_idx:]
 
         #scale the data before processing
-        if scale_factor is not None:
-            train_part=self.scaler.fit_scale1D(train_part,scale_factor)
-            test_part=self.scaler.scale1D(test_part)
+        if use_profile: # that means transform-only operation
+            pf = self._profiles[profile]
 
-            if self.target_scaler is None:
-                self.target_scaler = deepcopy(self.scaler)
+            if pf.get("scaler", None) is not None:
 
-        #TODO:expand for other normalizations
-        #init normalizer if normalization is required
-        if input_normalization_type is None:
-            self.normalizer=None
+                self.scaler = deepcopy(pf["scaler"])
+                train_part = self.scaler.scale1D(train_part)
+                test_part = self.scaler.scale1D(test_part)
+
+                if self.target_scaler is None:
+                    self.target_scaler = deepcopy(self.scaler)
+
+            if pf.get("normalizer", None) is not None:
+                self.normalizer = deepcopy(pf["normalizer"])
+                train_part = self.normalizer.transform(train_part.reshape(-1, 1))
+                test_part = self.normalizer.transform(test_part.reshape(-1, 1))
+
         else:
-            self.normalizer=Normalizer(input_normalization_type)
-            if self.target_normalizer is None:
-                self.target_normalizer = deepcopy(self.normalizer)
-            
-            # Train ve test verilerini normalize et
-            train_part = self.normalizer.fit_transform(train_part.reshape(-1,1))
-            test_part = self.normalizer.transform(test_part.reshape(-1,1))
+
+            if scale_factor is not None:
+                self.scaler = Scaler()
+                train_part = self.scaler.fit_scale1D(train_part, scale_factor)
+                test_part = self.scaler.scale1D(test_part)
+                if self.target_scaler is None:
+                    self.target_scaler = deepcopy(self.scaler)
+
+            if normalization_type is None:
+                self.normalizer = None
+            else:
+                self.normalizer = Normalizer(normalization_type)
+                if self.target_normalizer is None:
+                    self.target_normalizer = deepcopy(self.normalizer)
+                train_part = self.normalizer.fit_transform(train_part.reshape(-1, 1))
+                test_part = self.normalizer.transform(test_part.reshape(-1, 1))
+
+            self._profiles[profile] = {
+                "scaler": deepcopy(self.scaler) if scale_factor is not None else None,
+                "normalizer": deepcopy(self.normalizer) if normalization_type is not None else None,
+                "scale_factor": scale_factor,
+                "normalization_type": normalization_type,
+                "wavelet_type": wavelet_type,
+                "sequence_size": sequence_size,
+                "error_sequence_size": error_sequence_size,
+                "stride": stride_val,
+                "required_timestamps": required_timestamps,
+                "conjoincy": conjoincy,
+                "target_normalization_type": target_normalization_type,
+            }
 
         # Train ve test verilerini tekrar birleştir ve full data 'yı oluştur
         data = np.concatenate([train_part, test_part])
@@ -139,6 +185,7 @@ class DataPreprocessor:
         #build sequences w.r.t. parameters
         print("Initial data size:",len(data), "------")
         if conjoincy:
+            #TODO : update this checking build_sequences
             sequences= self._build_conjoined_sequences(data, 
                                          sorted_sampling_periods, 
                                          sampling_statistics, 
@@ -149,10 +196,9 @@ class DataPreprocessor:
                                          sorted_sampling_periods, 
                                          sampling_statistics, 
                                          sequence_size,
-                                         stride,
+                                         stride_val,
                                          wavelet_type, 
                                          required_timestamps)
-
 
         #normalize y with window_mean then adjust x and y to have same length
         if target_normalization_type == "window_mean":
@@ -170,8 +216,8 @@ class DataPreprocessor:
             mean_y = np.zeros_like(y)
         else:
             raise ValueError(f"Unsupported target_normalization_type: {target_normalization_type}")
-        print("X: ",len(sequences), "Y: ",len(y),"---before adjustment",)
-        self.__final_y_processed=np.append(y,0).reshape(-1,1) # add a zero to the end as a placeholder for the tomorrow's prediction
+
+        self.__final_y_processed=np.append(y,0).reshape(-1,1) # add a zero to the end as a placeholder for the tomorrow's prediction for alignment
         self.__y_denormalization_term= np.append(mean_y,0).reshape(-1,1) # add a zero mean to the end as a placeholder for the tomorrow's prediction
 
         if self.target is None:
@@ -183,11 +229,10 @@ class DataPreprocessor:
         X=np.asarray(sequences[:len(self.target)]) #includes tomorrow prediction as placeholder
 
         #split train and test data
-        self.__test_size_index=int(len(X)*test_ratio) #TODO: there is also split_index, make it one variable
         X_train, X_test = X[:-self.__test_size_index], X[-self.__test_size_index:]
         y_train, y_test = self.__final_y_processed[:-self.__test_size_index], self.__final_y_processed[-self.__test_size_index:]
 
-        return X_train,X_test,y_train,y_test # only main (first) network's used as y.
+        return X_train,X_test,y_train,y_test # only main (first) network's y can be used directly as target.
 
     def preprocess_errors(self,errors: np.ndarray) -> List[np.ndarray]:
         """
@@ -203,7 +248,7 @@ class DataPreprocessor:
         # windowization
         windowed_errors = self.build_windows(errors, window_length=self.__error_sequence_size) # window size is treated as sequence size in error network.
 
-        # normalized and wavelet transformed X
+        # normalized and wavelet transformed X, shifted 1 step back
         X=windowed_errors[:-1]
         X=self.window_normalizer.fit_transform(X) # X will be training or test set not whole.So it is secure to do so.
         X_errors=np.apply_along_axis(self._calculate_dwt, 1, X.copy(),wavelet_type=self.__wavelet_type).astype(np.float32)
@@ -249,11 +294,11 @@ class DataPreprocessor:
             cascade_sequences = []
 
             for period in sorted_sampling_periods:
-                
+
                 stat_sequences = []
 
                 for stat in sampling_statistics:
-                    
+
                     #That case will be controlled in the variable network
                     # # if the statistics includes std, skip the last period (1-day) since it is a zero vector.
                     # if stat == "std" and period == 1:
@@ -500,21 +545,21 @@ class DataPreprocessor:
         Returns: time shifted and size-trimmed y values for test and train data
         """
         if self.mode=="train":
-            return self.target[self.__error_sequence_size+1:-self.__test_size_index]
+            return self.target[self.__error_sequence_size:-self.__test_size_index]
         else:
-            return self.target[-self.__test_size_index+self.__error_sequence_size+1:]
+            return self.target[-self.__test_size_index+self.__error_sequence_size:]
 
     
     def get_final_denormalization_term(self):
         """
         Returns: time shifted and size-trimmed y denormalization values for test and train data
         Explanation:
-        - The offset (error_sequence_size + 1) is windowing offset + 1 unit time shift
+        - The offset (error_sequence_size) is windowing offset
         """        
         if self.mode=="train":
-            return self.target_denormalization_term[self.__error_sequence_size+1:-self.__test_size_index]
+            return self.target_denormalization_term[self.__error_sequence_size:-self.__test_size_index]
         else:  
-            return self.target_denormalization_term[-self.__test_size_index+self.__error_sequence_size+1:]
+            return self.target_denormalization_term[-self.__test_size_index+self.__error_sequence_size:]
    
     def generate_final_denormalization_term_for_last_pred_element(self):
         
@@ -549,3 +594,19 @@ class DataPreprocessor:
         self.target_denormalization_term = None
         self.target_scaler = None
         self.target_normalizer = None
+
+        self._profiles = {}
+
+    def reset_transient(self):
+
+        self.mode = "train"
+        self.__final_y_processed = None
+        self.__y_denormalization_term = None
+        self.__test_size_index = None
+        self.__required_timestamps = None
+        self.__sequence_size = None
+        self.__error_sequence_size = None
+        self.__wavelet_type = None
+
+        self.target = None
+        self.target_denormalization_term = None

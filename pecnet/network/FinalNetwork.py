@@ -38,7 +38,7 @@ class FinalNetwork:
         if all_cascaded_predictions.ndim!=2 :
             raise ValueError("Prediction values should be 2D array. Please reshape before proceeding.")
 
-        print("Mode: ", self.mode, " Final Network is working...")
+        print("Mode: ", self.mode, " Final Network is working... \n")
 
         preds=self.__add_final_network(all_cascaded_predictions,DataPreprocessor().get_final_y_processed())
         self.__final_predictions=self.__generate_final_preds(preds)
@@ -57,7 +57,7 @@ class FinalNetwork:
         Returns:
             numpy.ndarray: An array containing the predictions from the final network.
         """
-        model, preds = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
+        model, preds = train_or_load_model(x, y, self.mode, self.models, self.__model_index,network_name="FinalNetwork")
     
         return preds
 

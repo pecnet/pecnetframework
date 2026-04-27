@@ -40,6 +40,7 @@ class VariableNetwork():
         switch_mode: Switches between 'train' and 'test' modes.
     """
 
+    variable_net_counter = 0  # for logging
 
     def __init__(self, X_bands,y_band, is_primary_network=False, pre_comp_preds=[]):
         self.__is_primary_network = is_primary_network        # is it first(root-level) nn or not?
@@ -47,6 +48,9 @@ class VariableNetwork():
         self.models = []     # List to store model instances
         self.mode = 'train'  # Default mode is train
         self.__model_index = 0 # index of the models in current Variable Network
+
+        self.network_name = f"Variable_{VariableNetwork.variable_net_counter}_Network"
+        VariableNetwork.variable_net_counter += 1
 
         self.init_network(X_bands, y_band, pre_comp_preds)
 
@@ -73,7 +77,7 @@ class VariableNetwork():
                 if np.all(cascad_data_x == 0): # all values will be 0 for frequency=1 and statistic="std"
                     continue;
 
-                print("Mode: ", self.mode, " Cascaded Neural Network for frequency {} and statistic {} is working...".format(frequency,statistic))
+                print("Mode: ", self.mode, " Cascaded Neural Network for frequency {} and statistic {} is working...\n".format(frequency,statistic))
 
                 preds,errors,compensated_preds=self.__add_cascaded_network(cascad_data_x,self.__target_values[-1])
 
@@ -98,8 +102,8 @@ class VariableNetwork():
         Returns:
             tuple: A tuple containing the predictions, errors, and compensated predictions from the current cascaded network.
         """
-
-        model, cascad_pred = train_or_load_model(x, y, self.mode, self.models, self.__model_index)
+        network_name = f"{self.network_name}_{self.__model_index}"
+        model, cascad_pred = train_or_load_model(x, y, self.mode, self.models, self.__model_index,network_name=network_name)
         self.__model_index += 1
 
         if not self.__is_hierarchy_started:
